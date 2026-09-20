@@ -9,8 +9,12 @@ from sha_claim.domain.claim import (
     ClaimDiagnosis,
     ClaimIntervention,
     ClaimLine,
+    Discharge,
     LineEdit,
+    LineResubmission,
     NewClaimLine,
+    NextOfKin,
+    NextOfKinContact,
     PayerClaimRecord,
     VirtualClaim,
 )
@@ -85,3 +89,11 @@ class VirtualClaimGateway(VisitOpener, ClaimSubmitter, Protocol):
     async def payer_status(
         self, claim: ClaimGuid, provider_claim_no: str
     ) -> tuple[PayerClaimRecord, ...]: ...
+
+    async def send_discharge_otp(self, token: ConsentToken, patient: PatientId) -> str: ...
+
+    async def discharge(self, token: ConsentToken, discharge: Discharge) -> VirtualClaim: ...
+
+    async def add_next_of_kin(self, token: ConsentToken, next_of_kin: NextOfKin) -> NextOfKinContact: ...
+
+    async def resubmit_lines(self, token: ConsentToken) -> LineResubmission: ...

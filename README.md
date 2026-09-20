@@ -3,10 +3,9 @@
 Python SDK for **Social Health Authority (SHA, Kenya)** claims through the Digital Health Agency's
 **AfyaConnect HIE eClaims API**. Async-first, typed, framework-free.
 
-> Status: pre-release (`0.1.0.dev0`). 24 of 49 endpoints implemented. Eligibility, benefits and consent are
+> Status: pre-release (`0.1.0.dev0`). 34 of 49 endpoints implemented — the full outpatient, inpatient and pre-auth flow. Eligibility, benefits and consent are
 > verified live against DHA UAT; the claim lifecycle (`ClaimSession`) is contract-tested against the published
-> spec and awaits a UAT beneficiary with a reachable phone for live verification. Pre-authorisation, emergency
-> and ePrescriptions are not implemented yet. See [PLAN.md](PLAN.md).
+> spec and awaits a UAT beneficiary with a reachable phone for live verification. Emergency/EMT and ePrescriptions are not implemented yet. See [PLAN.md](PLAN.md).
 
 ## Install
 

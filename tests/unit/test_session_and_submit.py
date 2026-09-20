@@ -15,14 +15,18 @@ from sha_claim.domain.claim import (
     ClaimDiagnosis,
     ClaimIntervention,
     ClaimLine,
+    Discharge,
     LineEdit,
+    LineResubmission,
     NewClaimLine,
+    NextOfKin,
+    NextOfKinContact,
     PayerClaimRecord,
     VirtualClaim,
 )
 from sha_claim.domain.codes import DocumentType, Icd11Code, InterventionCode, RegulationBody
-from sha_claim.domain.consent import ConsentProof
-from sha_claim.domain.enums import CancelReason, ServiceType
+from sha_claim.domain.consent import ConsentProof, Otp
+from sha_claim.domain.enums import CancelReason, DischargeReason, NextOfKinIdType, ServiceType
 from sha_claim.domain.identifiers import (
     AttachmentId,
     ClaimGuid,
@@ -146,6 +150,31 @@ class FakeGateway:
     async def close(self, token: ConsentToken, reason: CancelReason, text: str) -> VirtualClaim:
         self._rec("close", token, reason, text)
         return claim("CLOSED")
+
+    async def send_discharge_otp(self, token: ConsentToken, patient: PatientId) -> str:
+        self._rec("send_discharge_otp", token, patient)
+        return "OTP sent"
+
+    async def discharge(self, token: ConsentToken, discharge: Discharge) -> VirtualClaim:
+        self._rec("discharge", token, discharge)
+        return claim("DISCHARGED")
+
+    async def add_next_of_kin(self, token: ConsentToken, next_of_kin: NextOfKin) -> NextOfKinContact:
+        self._rec("add_next_of_kin", token, next_of_kin)
+        return NextOfKinContact(
+            "nk",
+            next_of_kin.full_name,
+            next_of_kin.id_number,
+            next_of_kin.contact_value,
+            "PHONE",
+            False,
+            False,
+            True,
+        )
+
+    async def resubmit_lines(self, token: ConsentToken) -> LineResubmission:
+        self._rec("resubmit_lines", token)
+        return LineResubmission(LineGuid("L1"), "RESUBMITTED", "ok")
 
     async def payer_status(
         self, claim_guid: ClaimGuid, provider_claim_no: str
@@ -341,4 +370,39 @@ async def test_preauth_local_validation() -> None:
             diagnoses=["JB0Z"],
             doctors=[],
             notification_email="a@b.co",
+        )
+
+
+async def test_inpatient_discharge_flow() -> None:
+    from datetime import date
+
+    gw = FakeGateway()
+    s = ClaimSession(gw, FakePreauths(), TOKEN, claim())
+    contact = await s.add_next_of_kin(
+        full_name="Jane Doe",
+        id_number="1",
+        id_type=NextOfKinIdType.NATIONAL_ID,
+        contact_value="+254700000000",
+    )
+    assert contact.is_main_contact
+    assert await s.send_discharge_otp("CR1") == "OTP sent"
+    discharged = await s.discharge(
+        discharge_date=date(2026, 9, 21),
+        reason=DischargeReason.RECOVERED,
+        invoice_number="INV-1",
+        otp="123456",
+    )
+    assert discharged.workflow_state == "DISCHARGED" and s.claim is discharged
+    assert (await s.resubmit_lines()).status == "RESUBMITTED"
+    names = [c[0] for c in gw.calls]
+    assert names == ["add_next_of_kin", "send_discharge_otp", "discharge", "resubmit_lines"]
+    command = gw.calls[2][1][1]
+    assert command.otp == Otp("123456") and command.invoice_number == InvoiceNumber("INV-1")
+
+
+async def test_next_of_kin_validation() -> None:
+    s = ClaimSession(FakeGateway(), FakePreauths(), TOKEN)
+    with pytest.raises(RequestValidationError, match="contact_value"):
+        await s.add_next_of_kin(
+            full_name="J", id_number="1", id_type=NextOfKinIdType.NATIONAL_ID, contact_value=" "
         )

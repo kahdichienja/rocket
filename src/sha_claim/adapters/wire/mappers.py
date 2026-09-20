@@ -13,6 +13,8 @@ from sha_claim.adapters.wire.schemas.claim import (
     ClaimInterventionWire,
     ClaimLineWire,
     InvoiceWire,
+    LineResubmissionWire,
+    NextOfKinContactWire,
     PayerClaimWire,
     VirtualClaimWire,
 )
@@ -25,6 +27,8 @@ from sha_claim.domain.claim import (
     ClaimIntervention,
     ClaimLine,
     Invoice,
+    LineResubmission,
+    NextOfKinContact,
     PayerClaimRecord,
     VirtualClaim,
 )
@@ -246,6 +250,30 @@ def to_invoice(w: InvoiceWire, currency: str) -> Invoice:
         lines=tuple(to_claim_line(line) for line in w.lines),
         invoice_date=parse_date(w.invoice_date),
         extra=w.unmodelled(),
+    )
+
+
+def to_next_of_kin_contact(w: NextOfKinContactWire) -> NextOfKinContact:
+    return NextOfKinContact(
+        guid=w.guid,
+        full_name=w.next_of_kin_full_name,
+        id_number=w.next_of_kin_id_number,
+        contact_value=w.contact_value,
+        contact_type=w.contact_type,
+        is_verified=w.is_verified,
+        is_confirmed=w.is_confirmed,
+        is_main_contact=w.is_main_contact,
+        owner_type=w.owner_type,
+        extra=w.unmodelled(),
+    )
+
+
+def to_line_resubmission(w: LineResubmissionWire) -> LineResubmission:
+    return LineResubmission(
+        line=LineGuid(w.line_id) if w.line_id.strip() else None,
+        status=w.status,
+        message=w.message,
+        resubmitted_at=parse_datetime(w.resubmitted_at),
     )
 
 

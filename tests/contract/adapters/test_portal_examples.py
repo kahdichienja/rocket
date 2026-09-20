@@ -13,7 +13,9 @@ from sha_claim.adapters.wire.schemas.claim import (
     ClaimDiagnosisWire,
     ClaimInterventionWire,
     ClaimLineWire,
+    LineResubmissionWire,
     MessageWire,
+    NextOfKinContactWire,
     PayerClaimWire,
     VirtualClaimWire,
 )
@@ -49,6 +51,10 @@ CASES: dict[str, tuple[type[BaseModel], Any]] = {
     "POST /api/v1/preauths/cancel": (PreauthorizationWire, mappers.to_preauthorization),
     "DELETE /api/v1/preauths/diagnoses/{icd_code}": (PreauthorizationWire, mappers.to_preauthorization),
     "POST /api/v1/claims/doctor-consent": (DoctorConsentWire, None),
+    "POST /api/v1/claims/otp/discharge": (MessageWire, None),
+    "POST /api/v1/claims/discharge": (VirtualClaimWire, mappers.to_virtual_claim),
+    "POST /api/v1/patients/next-of-kin/contacts": (NextOfKinContactWire, mappers.to_next_of_kin_contact),
+    "POST /api/v1/claims/lines/resubmit": (LineResubmissionWire, mappers.to_line_resubmission),
 }
 
 

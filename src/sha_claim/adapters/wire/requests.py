@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from sha_claim.adapters.wire.transport import TimeoutKind, WireRequest
 from sha_claim.domain.attachments import Attachment
-from sha_claim.domain.claim import LineEdit, NewClaimLine
+from sha_claim.domain.claim import Discharge, LineEdit, NewClaimLine, NextOfKin
 from sha_claim.domain.codes import Icd11Code, InterventionCode
 from sha_claim.domain.consent import BiometricGuid, ConsentProof, MatchId, Otp
 from sha_claim.domain.enums import CancelReason, IdentificationType, ServiceType
@@ -326,3 +326,44 @@ def _practitioner_fields(p: PractitionerRef) -> dict[str, str]:
     if p.identification_type is IdentificationType.REGISTRATION_NUMBER:
         fields["practitioner_registration_number"] = p.identification_number
     return fields
+
+
+# ── inpatient discharge, next of kin, resubmission ──
+
+
+def send_discharge_otp(token: ConsentToken, patient: PatientId) -> WireRequest:
+    return WireRequest(
+        "POST", "/claims/otp/discharge", json={"consent_token": token.value, "patient_id": patient.value}
+    )
+
+
+def discharge(token: ConsentToken, d: Discharge) -> WireRequest:
+    return WireRequest(
+        "POST",
+        "/claims/discharge",
+        json={
+            "consent_token": token.value,
+            "discharge_date": d.discharge_date.isoformat(),
+            "discharge_reason": d.reason.value,
+            "invoice_number": d.invoice_number.value,
+            "otp": d.otp.code,
+        },
+    )
+
+
+def add_next_of_kin(token: ConsentToken, n: NextOfKin) -> WireRequest:
+    return WireRequest(
+        "POST",
+        "/patients/next-of-kin/contacts",
+        json={
+            "consent_token": token.value,
+            "next_of_kin_full_name": n.full_name,
+            "next_of_kin_id_number": n.id_number,
+            "next_of_kin_id_number_type": n.id_type.value,
+            "contact_value": n.contact_value,
+        },
+    )
+
+
+def resubmit_lines(token: ConsentToken) -> WireRequest:
+    return WireRequest("POST", "/claims/lines/resubmit", json={"consent_token": token.value})

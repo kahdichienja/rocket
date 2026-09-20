@@ -13,7 +13,8 @@ from decimal import Decimal
 from typing import Any
 
 from sha_claim.domain.codes import Icd11Code, InterventionCode, SchemeCode
-from sha_claim.domain.enums import PaymentMechanism, ServiceType
+from sha_claim.domain.consent import Otp
+from sha_claim.domain.enums import DischargeReason, NextOfKinIdType, PaymentMechanism, ServiceType
 from sha_claim.domain.identifiers import AttachmentId, ClaimGuid, ConsentToken, InvoiceNumber, LineGuid
 from sha_claim.domain.money import Money
 
@@ -200,3 +201,52 @@ class PayerClaimRecord:
     @property
     def status(self) -> str:
         return self.workflow_display_name or self.workflow_state
+
+
+@dataclass(frozen=True, slots=True)
+class Discharge:
+    """Command for `POST /claims/discharge` (inpatient). The OTP comes from `send_discharge_otp`."""
+
+    discharge_date: date
+    reason: DischargeReason
+    invoice_number: InvoiceNumber
+    otp: Otp
+
+
+@dataclass(frozen=True, slots=True)
+class NextOfKin:
+    """Command for `POST /patients/next-of-kin/contacts` — who consents when the beneficiary cannot."""
+
+    full_name: str
+    id_number: str
+    id_type: NextOfKinIdType
+    contact_value: str  # phone number the discharge OTP goes to
+
+    def __post_init__(self) -> None:
+        for name in ("full_name", "id_number", "contact_value"):
+            value = getattr(self, name).strip()
+            if not value:
+                raise ValueError(f"{name} cannot be empty")
+            object.__setattr__(self, name, value)
+
+
+@dataclass(frozen=True, slots=True)
+class NextOfKinContact:
+    guid: str
+    full_name: str
+    id_number: str
+    contact_value: str
+    contact_type: str
+    is_verified: bool
+    is_confirmed: bool
+    is_main_contact: bool
+    owner_type: str = ""
+    extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
+class LineResubmission:
+    line: LineGuid | None
+    status: str
+    message: str
+    resubmitted_at: datetime | None = None

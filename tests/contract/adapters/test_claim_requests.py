@@ -4,10 +4,18 @@ from datetime import date
 from sha_claim.adapters.wire import requests
 from sha_claim.adapters.wire.transport import TimeoutKind
 from sha_claim.domain.attachments import Attachment
-from sha_claim.domain.claim import LineEdit, NewClaimLine
+from sha_claim.domain.claim import Discharge, LineEdit, NewClaimLine, NextOfKin
 from sha_claim.domain.codes import DocumentType, Icd11Code, InterventionCode, SchemeCode
-from sha_claim.domain.enums import CancelReason
-from sha_claim.domain.identifiers import AttachmentId, ClaimGuid, ConsentToken, InvoiceNumber, LineGuid
+from sha_claim.domain.consent import Otp
+from sha_claim.domain.enums import CancelReason, DischargeReason, NextOfKinIdType
+from sha_claim.domain.identifiers import (
+    AttachmentId,
+    ClaimGuid,
+    ConsentToken,
+    InvoiceNumber,
+    LineGuid,
+    PatientId,
+)
 from sha_claim.domain.money import Money
 
 TOKEN = ConsentToken("CR1-ABCDEFGHIJ")
@@ -90,3 +98,32 @@ def test_preview_is_retry_safe_but_submit_and_close_are_not() -> None:
 def test_payer_status_query() -> None:
     r = requests.payer_status(ClaimGuid("G"), "INV-1")
     assert r.idempotent and r.params == {"guid": "G", "provider_claim_no": "INV-1"}
+
+
+def test_discharge_and_next_of_kin_requests() -> None:
+    assert requests.send_discharge_otp(TOKEN, PatientId("CR1")).json == {
+        "consent_token": "CR1-ABCDEFGHIJ",
+        "patient_id": "CR1",
+    }
+    d = requests.discharge(
+        TOKEN, Discharge(date(2026, 9, 21), DischargeReason.REFERRED, InvoiceNumber("INV-1"), Otp("123456"))
+    )
+    assert d.json == {
+        "consent_token": "CR1-ABCDEFGHIJ",
+        "discharge_date": "2026-09-21",
+        "discharge_reason": "REFERRED",
+        "invoice_number": "INV-1",
+        "otp": "123456",
+    }
+    assert not d.idempotent
+    n = requests.add_next_of_kin(
+        TOKEN, NextOfKin(" Jane Doe ", "1", NextOfKinIdType.BIRTH_CERTIFICATE, "+254700000000")
+    )
+    assert n.json == {
+        "consent_token": "CR1-ABCDEFGHIJ",
+        "next_of_kin_full_name": "Jane Doe",
+        "next_of_kin_id_number": "1",
+        "next_of_kin_id_number_type": "Birth Certificate",
+        "contact_value": "+254700000000",
+    }
+    assert requests.resubmit_lines(TOKEN).json == {"consent_token": "CR1-ABCDEFGHIJ"}

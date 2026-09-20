@@ -16,6 +16,9 @@ from sha_claim.adapters.wire.schemas.claim import (
     ClaimDiagnosisWire,
     ClaimInterventionWire,
     ClaimLineWire,
+    LineResubmissionWire,
+    MessageWire,
+    NextOfKinContactWire,
     PayerClaimWire,
     VirtualClaimWire,
 )
@@ -30,8 +33,12 @@ from sha_claim.domain.claim import (
     ClaimDiagnosis,
     ClaimIntervention,
     ClaimLine,
+    Discharge,
     LineEdit,
+    LineResubmission,
     NewClaimLine,
+    NextOfKin,
+    NextOfKinContact,
     PayerClaimRecord,
     VirtualClaim,
 )
@@ -199,6 +206,22 @@ class HttpVirtualClaimGateway:
             Page[PayerClaimWire], await self._transport.send(requests.payer_status(claim, provider_claim_no))
         )
         return tuple(mappers.to_payer_record(r) for r in page.results)
+
+    async def send_discharge_otp(self, token: ConsentToken, patient: PatientId) -> str:
+        response = await self._transport.send(requests.send_discharge_otp(token, patient))
+        return parse_as(MessageWire, response).message
+
+    async def discharge(self, token: ConsentToken, discharge: Discharge) -> VirtualClaim:
+        response = await self._transport.send(requests.discharge(token, discharge))
+        return mappers.to_virtual_claim(parse_as(VirtualClaimWire, response))
+
+    async def add_next_of_kin(self, token: ConsentToken, next_of_kin: NextOfKin) -> NextOfKinContact:
+        response = await self._transport.send(requests.add_next_of_kin(token, next_of_kin))
+        return mappers.to_next_of_kin_contact(parse_as(NextOfKinContactWire, response))
+
+    async def resubmit_lines(self, token: ConsentToken) -> LineResubmission:
+        response = await self._transport.send(requests.resubmit_lines(token))
+        return mappers.to_line_resubmission(parse_as(LineResubmissionWire, response))
 
 
 class HttpPreauthGateway:

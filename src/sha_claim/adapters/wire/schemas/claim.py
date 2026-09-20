@@ -127,3 +127,22 @@ class VirtualClaimWire(WireModel):
     claim_diagnoses: list[ClaimDiagnosisWire] = Field(default_factory=list)
     claim_attachments: list[ClaimAttachmentWire] = Field(default_factory=list)
     invoices: list[InvoiceWire] = Field(default_factory=list)
+
+
+class NextOfKinContactWire(WireModel):
+    guid: str = ""
+    next_of_kin_full_name: str = ""
+    next_of_kin_id_number: str = ""
+    contact_value: str = ""
+    contact_type: str = ""
+    is_verified: bool = False
+    is_confirmed: bool = False
+    is_main_contact: bool = False
+    owner_type: str = ""
+
+
+class LineResubmissionWire(WireModel):
+    line_id: str = ""
+    status: str = ""
+    message: str = ""
+    resubmitted_at: str = ""

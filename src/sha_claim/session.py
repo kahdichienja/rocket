@@ -12,14 +12,25 @@ from sha_claim.domain.claim import (
     ClaimDiagnosis,
     ClaimIntervention,
     ClaimLine,
+    Discharge,
     LineEdit,
+    LineResubmission,
     NewClaimLine,
+    NextOfKin,
+    NextOfKinContact,
     PayerClaimRecord,
     VirtualClaim,
 )
 from sha_claim.domain.codes import Icd11Code, InterventionCode, SchemeCode
-from sha_claim.domain.enums import CancelReason, DoctorConsentRequestType, ServiceType
-from sha_claim.domain.identifiers import AttachmentId, ConsentToken, InvoiceNumber, LineGuid
+from sha_claim.domain.consent import Otp
+from sha_claim.domain.enums import (
+    CancelReason,
+    DischargeReason,
+    DoctorConsentRequestType,
+    NextOfKinIdType,
+    ServiceType,
+)
+from sha_claim.domain.identifiers import AttachmentId, ConsentToken, InvoiceNumber, LineGuid, PatientId
 from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
@@ -168,6 +179,44 @@ class ClaimSession:
         if self.claim.guid is None:
             raise RequestValidationError([Violation("claim", "server has not assigned a claim GUID yet")])
         return await self._gateway.payer_status(self.claim.guid, provider_claim_no)
+
+    # ── inpatient discharge & consent fallbacks ──
+
+    async def send_discharge_otp(self, patient: PatientId | str) -> str:
+        """`POST /claims/otp/discharge` — OTP to the beneficiary or their next of kin for discharge consent."""
+        return await self._gateway.send_discharge_otp(self.consent_token, PatientId.of(patient))
+
+    async def discharge(
+        self,
+        *,
+        discharge_date: date,
+        reason: DischargeReason,
+        invoice_number: InvoiceNumber | str,
+        otp: Otp | str,
+    ) -> VirtualClaim:
+        """`POST /claims/discharge` — closes the inpatient stay; call before `submit`."""
+        command = Discharge(
+            discharge_date,
+            reason,
+            InvoiceNumber.of(invoice_number),
+            otp if isinstance(otp, Otp) else Otp(otp),
+        )
+        self.claim = await self._gateway.discharge(self.consent_token, command)
+        return self.claim
+
+    async def add_next_of_kin(
+        self, *, full_name: str, id_number: str, id_type: NextOfKinIdType, contact_value: str
+    ) -> NextOfKinContact:
+        """`POST /patients/next-of-kin/contacts` — registers who receives OTPs when the beneficiary cannot."""
+        try:
+            command = NextOfKin(full_name, id_number, id_type, contact_value)
+        except ValueError as exc:
+            raise RequestValidationError([Violation("next_of_kin", str(exc))]) from exc
+        return await self._gateway.add_next_of_kin(self.consent_token, command)
+
+    async def resubmit_lines(self) -> LineResubmission:
+        """`POST /claims/lines/resubmit` — after `edit_line` following payer review."""
+        return await self._gateway.resubmit_lines(self.consent_token)
 
     # ── pre-authorisation ──
 

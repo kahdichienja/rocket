@@ -10,14 +10,15 @@ published to PyPI so other facilities/HMIS vendors can use it.
 - How the endpoints chain into claim workflows: [docs/api/WORKFLOWS.md](docs/api/WORKFLOWS.md)
 
 **Status 2026-09-20:** docs captured, architecture revised (not FHIR; server-owned virtual claim keyed by `consent_token`).
-**Implemented: 30 of 49 endpoints.** Live-verified on DHA UAT: auth, eligibility, benefits/sub-benefits/interventions,
+**Implemented: 34 of 49 endpoints — the complete outpatient + inpatient + pre-auth story.** Live-verified on DHA UAT: auth, eligibility, benefits/sub-benefits/interventions,
 consent (authorize / get / reject). Contract-tested against documented shapes (live blocked by Q11): `claims.open_visit`
 and the whole `ClaimSession` — interventions, diagnoses, lines, attachments, preview, submit, close, payer status,
-pre-authorisation (create / list / remove diagnosis / remove doctor / cancel) and doctor consent.
+pre-authorisation (create / list / remove diagnosis / remove doctor / cancel), doctor consent, inpatient discharge
+(OTP + discharge), next-of-kin contacts, line resubmission.
 Every response schema is validated against the portal's own example JSON (`docs/api/spec/examples.json`).
-Gates green: ruff, mypy --strict, import-linter, 181 tests / 95.6 % coverage. **Next:** inpatient discharge + next of kin,
-then live-verify the claim flow the moment a UAT beneficiary with a reachable phone exists (Q11). Emergency/EMT and
-ePrescriptions remain v2.
+Gates green: ruff, mypy --strict, import-linter, 192 tests / 95.4 % coverage. **Remaining for v1:** live-verify the claim
+flow once a UAT beneficiary with a reachable phone exists (Q11), then release `0.1.0`. **v2:** emergency/EMT (6),
+ePrescriptions (4), uploads (2), utilization/POMSF/bed occupancy (3).
 
 ---
 

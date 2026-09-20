@@ -67,6 +67,26 @@ SDK_REQUESTS: list[tuple[str, str, set[str], set[str]]] = [
     ),
     ("post", "/api/v1/preauths/cancel", set(), {"consent_token", "intervention_code"}),
     ("post", "/api/v1/claims/doctor-consent", set(), {"intervention_code", "request_type"}),
+    ("post", "/api/v1/claims/otp/discharge", set(), {"consent_token", "patient_id"}),
+    (
+        "post",
+        "/api/v1/claims/discharge",
+        set(),
+        {"consent_token", "discharge_date", "discharge_reason", "invoice_number", "otp"},
+    ),
+    (
+        "post",
+        "/api/v1/patients/next-of-kin/contacts",
+        set(),
+        {
+            "consent_token",
+            "contact_value",
+            "next_of_kin_full_name",
+            "next_of_kin_id_number",
+            "next_of_kin_id_number_type",
+        },
+    ),
+    ("post", "/api/v1/claims/lines/resubmit", set(), {"consent_token"}),
 ]
 
 

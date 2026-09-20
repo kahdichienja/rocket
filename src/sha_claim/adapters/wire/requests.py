@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from datetime import datetime
 from decimal import Decimal
 
 from sha_claim.adapters.wire.transport import TimeoutKind, WireRequest
@@ -11,17 +12,21 @@ from sha_claim.domain.attachments import Attachment
 from sha_claim.domain.claim import Discharge, LineEdit, NewClaimLine, NextOfKin
 from sha_claim.domain.codes import Icd11Code, InterventionCode
 from sha_claim.domain.consent import BiometricGuid, ConsentProof, MatchId, Otp
+from sha_claim.domain.emergency import EmergencyCase, EmtClaim, ProtocolLine
 from sha_claim.domain.enums import CancelReason, IdentificationType, ServiceType
 from sha_claim.domain.identifiers import (
     AttachmentId,
     ClaimGuid,
     ConsentToken,
+    FacilityCode,
+    FileId,
     InvoiceNumber,
     LineGuid,
     PatientId,
 )
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, PreauthRequest
+from sha_claim.domain.prescription import DispenseRequest, MedicationOrder, PrescriptionRequest
 
 
 def eligibility_check(identification_number: str, identification_type: IdentificationType) -> WireRequest:
@@ -116,6 +121,27 @@ def restore_intervention(token: ConsentToken, code: InterventionCode) -> WireReq
         "/claims/interventions/restore",
         json={"consent_token": token.value, "intervention_code": code.value},
     )
+
+
+def switch_intervention(
+    token: ConsentToken,
+    existing: InterventionCode,
+    new: InterventionCode,
+    retain_bill_items: bool,
+    bill_from: datetime | None,
+    bill_to: datetime | None,
+) -> WireRequest:
+    body: dict[str, object] = {
+        "consent_token": token.value,
+        "existing_intervention_code": existing.value,
+        "new_intervention_code": new.value,
+        "retain_bill_items": retain_bill_items,
+    }
+    if bill_from is not None:
+        body["bill_from"] = bill_from.isoformat()
+    if bill_to is not None:
+        body["bill_to"] = bill_to.isoformat()
+    return WireRequest("POST", "/claims/interventions/switch", json=body)
 
 
 def add_diagnosis(token: ConsentToken, icd: Icd11Code, intervention: InterventionCode) -> WireRequest:
@@ -367,3 +393,219 @@ def add_next_of_kin(token: ConsentToken, n: NextOfKin) -> WireRequest:
 
 def resubmit_lines(token: ConsentToken) -> WireRequest:
     return WireRequest("POST", "/claims/lines/resubmit", json={"consent_token": token.value})
+
+
+# ── ePrescriptions ──
+
+
+def create_prescription(token: ConsentToken, request: PrescriptionRequest) -> WireRequest:
+    body: dict[str, object] = {
+        "consent_token": token.value,
+        "intervention_code": request.intervention_code.value,
+        "items": [_medication_order(item) for item in request.items],
+    }
+    if request.prescriber is not None:
+        body.update(
+            identification_number=request.prescriber.identification_number,
+            identification_type=request.prescriber.identification_type.value,
+            regulation_body=request.prescriber.regulation_body.value,
+        )
+    return WireRequest("POST", "/prescriptions", json=body)
+
+
+def get_prescription(token: ConsentToken) -> WireRequest:
+    return WireRequest("GET", "/prescriptions", params={"consent_token": token.value})
+
+
+def create_dispense(token: ConsentToken, request: DispenseRequest) -> WireRequest:
+    return WireRequest(
+        "POST",
+        "/prescriptions/dispenses",
+        json={
+            "consent_token": token.value,
+            "intervention_code": request.intervention_code.value,
+            "actual_products": [
+                {
+                    "actual_product_code": p.product_code,
+                    "total_quantity": _number(p.quantity),
+                    "medication_price": _number(p.price.amount),
+                }
+                for p in request.products
+            ],
+            "doctors": [
+                {
+                    "identification_number": d.identification_number,
+                    "identification_type": d.identification_type.value,
+                }
+                for d in request.dispensers
+            ],
+        },
+    )
+
+
+def remove_prescription_doctor(
+    token: ConsentToken, intervention: InterventionCode, registration_number: str
+) -> WireRequest:
+    return WireRequest(
+        "DELETE",
+        "/prescriptions/doctors",
+        json={
+            "consent_token": token.value,
+            "intervention_code": intervention.value,
+            "practitioner_registration_number": registration_number,
+        },
+    )
+
+
+def _medication_order(item: MedicationOrder) -> dict[str, object]:
+    body: dict[str, object] = {
+        "generic_concept_code": item.generic_concept_code,
+        "dose_quantity": _number(item.dose_quantity),
+        "dose_unit": item.dose_unit,
+        "frequency": item.frequency,
+        "period_unit": item.period_unit,
+        "duration": item.duration,
+        "duration_unit": item.duration_unit,
+        "start_date": item.start_date.isoformat(),
+        "needs_refill": item.needs_refill,
+        "refill_count": item.refill_count,
+    }
+    if item.end_date is not None:
+        body["end_date"] = item.end_date.isoformat()
+    if item.patient_instruction:
+        body["patient_instruction"] = item.patient_instruction
+    if item.additional_instruction:
+        body["additional_instruction"] = item.additional_instruction
+    return body
+
+
+def _number(value: Decimal | int) -> int | float:
+    """JSON number for `number`-typed fields: ints stay ints, decimals become floats (exact for 2dp money)."""
+    d = Decimal(value)
+    return int(d) if d == d.to_integral_value() else float(d)
+
+
+# ── emergency ──
+
+
+def open_emergency_case(case: EmergencyCase) -> WireRequest:
+    body: dict[str, object] = {
+        "identification_number": case.attending.identification_number,
+        "identification_type": case.attending.identification_type.value,
+        "regulation_body": case.attending.regulation_body.value,
+        "reference_number": case.reference_number,
+        "brought_by": case.brought_by.value,
+        "mode_of_arrival": case.mode_of_arrival.value,
+        "interventions": [c.value for c in case.interventions],
+    }
+    if case.beneficiary is not None:
+        body["beneficiary_cr_id"] = case.beneficiary.value
+    if case.otp is not None:
+        body["otp"] = case.otp.code
+    if case.notes:
+        body["notes"] = case.notes
+    return WireRequest("POST", "/claims/emergency", json=body)
+
+
+def emergency_protocols(intervention: InterventionCode, active: bool) -> WireRequest:
+    return WireRequest(
+        "GET",
+        "/claims/emergency/protocols",
+        params={"intervention_code": intervention.value, "active": "true" if active else "false"},
+    )
+
+
+def add_emergency_protocol(token: ConsentToken, line: ProtocolLine) -> WireRequest:
+    form = {
+        "consent_token": token.value,
+        "protocol_code": line.protocol_code.value,
+        "intervention_code": line.intervention_code.value,
+        "unit_price": line.unit_price.as_wire(),
+        "quantity": str(line.quantity),
+    }
+    if line.diagnoses:
+        form["diagnoses"] = ",".join(
+            d.value for d in line.diagnoses
+        )  # spec: comma-separated here, JSON on /claims/lines
+    return WireRequest("POST", "/claims/emergency/protocols", form=form, multipart=True)
+
+
+def add_emergency_doctor(token: ConsentToken, doctor: PractitionerRef) -> WireRequest:
+    return WireRequest(
+        "POST",
+        "/claims/doctors",
+        json={
+            "consent_token": token.value,
+            "identification_number": doctor.identification_number,
+            "identification_type": doctor.identification_type.value,
+            "regulation_body": doctor.regulation_body.value,
+        },
+    )
+
+
+def remove_emergency_doctor(token: ConsentToken) -> WireRequest:
+    return WireRequest("DELETE", "/claims/doctors", json={"consent_token": token.value})
+
+
+def open_emt_claim(token: ConsentToken, claim: EmtClaim) -> WireRequest:
+    files: dict[str, tuple[str, bytes, str]] = {}
+    meta: list[dict[str, str]] = []
+    for index, attachment in enumerate(claim.attachments):
+        part = f"attachment_{index}"
+        files[part] = (attachment.filename, attachment.content, attachment.content_type)
+        meta.append(
+            {"field": part, "document_type": attachment.document_type.value, "title": attachment.filename}
+        )
+    form = {
+        "consent_token": token.value,
+        "protocol_code": claim.protocol_code.value,
+        "case_number": claim.case_number,
+        "practitioner_reg_number": claim.practitioner_registration_number,
+        "provider_registration_number": claim.provider_registration_number,
+        "beneficiary_cr_id": claim.beneficiary.value,
+        "otp": claim.otp.code,
+        "diagnoses": json.dumps([d.value for d in claim.diagnoses]),
+        "interventions": json.dumps([c.value for c in claim.interventions]),
+    }
+    if meta:
+        form["attachments"] = json.dumps(meta)
+    return WireRequest(
+        "POST", "/claims/emt", form=form, files=files or None, multipart=True, timeout=TimeoutKind.UPLOAD
+    )
+
+
+# ── balances, occupancy, files ──
+
+
+def utilization(patient: PatientId, intervention: InterventionCode) -> WireRequest:
+    return WireRequest(
+        "GET",
+        "/patients/benefits/utilization",
+        params={"patient_id": patient.value, "intervention_code": intervention.value},
+    )
+
+
+def pomsf_balances(patient: PatientId, policy_year: str, principal_member_number: str | None) -> WireRequest:
+    params = {"patient_id": patient.value, "policy_year": policy_year}
+    if principal_member_number:
+        params["principal_member_number"] = principal_member_number
+    return WireRequest("GET", "/patients/pomsf-balances", params=params)
+
+
+def bed_occupancy(facility: FacilityCode) -> WireRequest:
+    # Spec says public; UAT requires a bearer token. Authenticated is the safe default.
+    return WireRequest("GET", f"/facilities/{facility.value}/beds/occupancy")
+
+
+def upload(filename: str, content: bytes, content_type: str) -> WireRequest:
+    return WireRequest(
+        "POST",
+        "/uploads",
+        files={"file": (filename, content, content_type)},
+        multipart=True,
+        timeout=TimeoutKind.UPLOAD,
+    )
+
+
+def download_link(file_id: FileId) -> WireRequest:
+    return WireRequest("GET", f"/uploads/{file_id.value}")

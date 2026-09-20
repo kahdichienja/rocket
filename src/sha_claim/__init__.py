@@ -2,7 +2,14 @@
 
 from sha_claim.client import AsyncSHAClient
 from sha_claim.domain.attachments import Attachment
-from sha_claim.domain.benefits import BenefitPackage, InterventionCoverage, SubBenefit
+from sha_claim.domain.benefits import (
+    BedOccupancy,
+    BenefitPackage,
+    FundLimit,
+    InterventionCoverage,
+    SubBenefit,
+    UtilizationBalance,
+)
 from sha_claim.domain.claim import (
     ClaimAttachment,
     ClaimDiagnosis,
@@ -18,21 +25,32 @@ from sha_claim.domain.claim import (
     PayerClaimRecord,
     VirtualClaim,
 )
-from sha_claim.domain.codes import DocumentType, Icd11Code, InterventionCode, RegulationBody, SchemeCode
+from sha_claim.domain.codes import (
+    DocumentType,
+    Icd11Code,
+    InterventionCode,
+    ProtocolCode,
+    RegulationBody,
+    SchemeCode,
+)
 from sha_claim.domain.consent import Authorization, AuthorizedIntervention, BiometricGuid, MatchId, Otp
 from sha_claim.domain.eligibility import Coverage, Eligibility, Scheme
+from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol, EmtClaim, ProtocolLine
 from sha_claim.domain.enums import (
     AuthorizationStatus,
+    BroughtBy,
     CancelReason,
     CoverageStatus,
     DischargeReason,
     DoctorConsentRequestType,
     EligibilityStatus,
     IdentificationType,
+    ModeOfArrival,
     NextOfKinIdType,
     PaymentMechanism,
     ServiceType,
 )
+from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import (
     AttachmentId,
     ClaimGuid,
@@ -45,6 +63,7 @@ from sha_claim.domain.identifiers import (
 from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
+from sha_claim.domain.prescription import Dispense, DispensedProduct, Dosage, MedicationOrder, Prescription
 from sha_claim.errors import (
     AuthenticationError,
     BadRequestError,
@@ -73,8 +92,10 @@ __all__ = [
     "AuthorizationStatus",
     "AuthorizedIntervention",
     "BadRequestError",
+    "BedOccupancy",
     "BenefitPackage",
     "BiometricGuid",
+    "BroughtBy",
     "CancelReason",
     "ClaimAttachment",
     "ClaimDiagnosis",
@@ -88,13 +109,22 @@ __all__ = [
     "CoverageStatus",
     "Discharge",
     "DischargeReason",
+    "Dispense",
+    "DispensedProduct",
     "DoctorConsentRequest",
     "DoctorConsentRequestType",
     "DocumentType",
+    "Dosage",
+    "DownloadLink",
     "Eligibility",
     "EligibilityStatus",
+    "EmergencyCase",
+    "EmergencyProtocol",
+    "EmtClaim",
     "Environment",
     "FacilityCode",
+    "FileId",
+    "FundLimit",
     "Icd11Code",
     "IdentificationType",
     "InterventionCode",
@@ -105,6 +135,8 @@ __all__ = [
     "LineGuid",
     "LineResubmission",
     "MatchId",
+    "MedicationOrder",
+    "ModeOfArrival",
     "Money",
     "NewClaimLine",
     "NextOfKin",
@@ -120,6 +152,9 @@ __all__ = [
     "PreauthItem",
     "PreauthRequest",
     "Preauthorization",
+    "Prescription",
+    "ProtocolCode",
+    "ProtocolLine",
     "RateLimitedError",
     "RegulationBody",
     "RequestValidationError",
@@ -129,11 +164,13 @@ __all__ = [
     "SchemeCode",
     "ServerError",
     "ServiceType",
+    "StoredFile",
     "SubBenefit",
     "SubmissionOutcomeUnknownError",
     "Timeouts",
     "TransportError",
     "UnexpectedResponseError",
+    "UtilizationBalance",
     "VirtualClaim",
     "__version__",
 ]

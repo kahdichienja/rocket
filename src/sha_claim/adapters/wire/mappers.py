@@ -6,7 +6,14 @@ from decimal import Decimal, InvalidOperation
 
 from sha_claim.adapters.wire.parsing import parse_date, parse_datetime
 from sha_claim.adapters.wire.schemas.authorization import AuthorizationWire, AuthorizedInterventionWire
-from sha_claim.adapters.wire.schemas.benefits import BenefitPackageWire, InterventionWire, SubBenefitWire
+from sha_claim.adapters.wire.schemas.benefits import (
+    BedOccupancyWire,
+    BenefitPackageWire,
+    FundLimitWire,
+    InterventionWire,
+    SubBenefitWire,
+    UtilizationWire,
+)
 from sha_claim.adapters.wire.schemas.claim import (
     ClaimAttachmentWire,
     ClaimDiagnosisWire,
@@ -19,8 +26,18 @@ from sha_claim.adapters.wire.schemas.claim import (
     VirtualClaimWire,
 )
 from sha_claim.adapters.wire.schemas.eligibility import CoverageWire, EligibilityWire, SchemeWire
+from sha_claim.adapters.wire.schemas.emergency import EmergencyProtocolWire
+from sha_claim.adapters.wire.schemas.files import DownloadLinkWire, StoredFileWire
 from sha_claim.adapters.wire.schemas.preauth import PreauthorizationWire
-from sha_claim.domain.benefits import BenefitPackage, InterventionCoverage, SubBenefit
+from sha_claim.adapters.wire.schemas.prescription import DispenseWire, DosageWire, PrescriptionWire
+from sha_claim.domain.benefits import (
+    BedOccupancy,
+    BenefitPackage,
+    FundLimit,
+    InterventionCoverage,
+    SubBenefit,
+    UtilizationBalance,
+)
 from sha_claim.domain.claim import (
     ClaimAttachment,
     ClaimDiagnosis,
@@ -32,9 +49,10 @@ from sha_claim.domain.claim import (
     PayerClaimRecord,
     VirtualClaim,
 )
-from sha_claim.domain.codes import Icd11Code, InterventionCode
+from sha_claim.domain.codes import Icd11Code, InterventionCode, ProtocolCode
 from sha_claim.domain.consent import Authorization, AuthorizedIntervention
 from sha_claim.domain.eligibility import Coverage, DateRange, Eligibility, Scheme
+from sha_claim.domain.emergency import EmergencyProtocol
 from sha_claim.domain.enums import (
     AuthorizationStatus,
     CoverageStatus,
@@ -42,16 +60,19 @@ from sha_claim.domain.enums import (
     PaymentMechanism,
     ServiceType,
 )
+from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import (
     AttachmentId,
     ClaimGuid,
     ConsentToken,
+    FileId,
     InvoiceNumber,
     LineGuid,
     PatientId,
 )
 from sha_claim.domain.money import Money
 from sha_claim.domain.preauth import Preauthorization
+from sha_claim.domain.prescription import Dispense, Dosage, Prescription
 
 
 def to_eligibility(w: EligibilityWire) -> Eligibility:
@@ -277,6 +298,111 @@ def to_line_resubmission(w: LineResubmissionWire) -> LineResubmission:
     )
 
 
+def to_prescription(w: PrescriptionWire) -> Prescription:
+    return Prescription(
+        guid=w.guid,
+        code=w.code,
+        status=w.status,
+        doctor_review_status=w.doctor_review_status,
+        intervention_code=_intervention(w.intervention.code) if w.intervention else None,
+        dosage=tuple(to_dosage(d) for d in w.dosage),
+        record_id=w.id,
+        extra=w.unmodelled(),
+    )
+
+
+def to_dispense(w: DispenseWire) -> Dispense:
+    return Dispense(
+        record_id=w.id,
+        status=w.status,
+        dosages=tuple(to_dosage(d) for d in w.dispense_dosages),
+        extra=w.unmodelled(),
+    )
+
+
+def to_dosage(w: DosageWire) -> Dosage:
+    return Dosage(
+        medication=w.medication,
+        medication_identifier=w.medication_identifier,
+        dose_quantity=_optional_decimal(w.dose_quantity),
+        dose_unit=w.dose_unit,
+        frequency=_optional_int(w.frequency),
+        period_unit=w.period_unit,
+        duration=str(w.duration) if w.duration not in (None, "") else "",
+        duration_unit=w.duration_unit,
+        route=w.route,
+        start_date=parse_date(w.start_date),
+        end_date=parse_date(w.end_date),
+        price=_money(w.medication_price),
+        status=w.status,
+        extra=w.unmodelled(),
+    )
+
+
+def to_emergency_protocol(w: EmergencyProtocolWire) -> EmergencyProtocol:
+    return EmergencyProtocol(
+        code=ProtocolCode(w.protocol_code or "UNKNOWN"),
+        name=w.name,
+        protocol_type=w.protocol_type,
+        classification=w.protocol_classification_type,
+        status=w.status,
+        tariff=_money(w.applicable_tariff),
+        guid=w.guid,
+        extra=w.unmodelled(),
+    )
+
+
+def to_utilization(w: UtilizationWire) -> UtilizationBalance:
+    detail = w.computational_detail
+    return UtilizationBalance(
+        intervention_code=_intervention(w.code),
+        patient_id=w.cr_id,
+        limit_scope=w.limit_scope,
+        individual_max=_money(w.individual_max_limit),
+        individual_utilised=_money(w.individual_utilised_limit),
+        household_max=_money(w.household_max_limit),
+        household_utilised=_money(w.household_utilised_limit),
+        available_amount=_money(detail.limit_available_amount) if detail else None,
+        eligible=detail.eligibility if detail else None,
+        next_availability=w.next_availability or (detail.next_available_date if detail else ""),
+        funds=tuple(_to_fund_limit(f) for f in w.fund_utilization_limit),
+        extra=w.unmodelled(),
+    )
+
+
+def _to_fund_limit(w: FundLimitWire) -> FundLimit:
+    return FundLimit(w.fund_type, _money(w.max_amount), _money(w.utilised_amount), _money(w.available_amount))
+
+
+def to_bed_occupancy(w: BedOccupancyWire) -> BedOccupancy:
+    b = w.bed_occupancy_rate
+    return BedOccupancy(
+        facility_name=w.name,
+        level=w.bp_level,
+        total_beds=b.total_number_of_bed,
+        total_inpatient_visits=b.total_ip_visits,
+        normal_beds=b.number_of_normal_bed,
+        icu_beds=b.number_of_icu_bed,
+        hdu_beds=b.number_of_hdu_bed,
+        dialysis_beds=b.number_of_dialysis_bed,
+        baby_cots=b.number_of_baby_cot,
+        extra=w.unmodelled(),
+    )
+
+
+def to_stored_file(w: StoredFileWire) -> StoredFile:
+    raw_id = w.file_id or w.id
+    return StoredFile(FileId(raw_id) if raw_id.strip() else None, w.path or w.url, extra=w.unmodelled())
+
+
+def to_download_link(w: DownloadLinkWire) -> DownloadLink:
+    data = w.data if isinstance(w.data, dict) else {}
+    url = str(
+        data.get("url") or data.get("download_url") or (w.data if isinstance(w.data, str) else "") or ""
+    )
+    return DownloadLink(url=url, message=w.message, extra=data)
+
+
 def to_payer_record(w: PayerClaimWire) -> PayerClaimRecord:
     return PayerClaimRecord(
         guid=w.guid,
@@ -366,3 +492,17 @@ def _icd(raw: str) -> Icd11Code | None:
 
 def _intervention(raw: str) -> InterventionCode | None:
     return InterventionCode(raw) if raw.strip() else None
+
+
+def _optional_decimal(raw: str | float | int | None) -> Decimal | None:
+    try:
+        return Decimal(str(raw)) if raw not in (None, "") else None
+    except InvalidOperation:
+        return None
+
+
+def _optional_int(raw: str | float | int | None) -> int | None:
+    try:
+        return int(Decimal(str(raw))) if raw not in (None, "") else None
+    except (InvalidOperation, ValueError):
+        return None

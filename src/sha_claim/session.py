@@ -21,8 +21,9 @@ from sha_claim.domain.claim import (
     PayerClaimRecord,
     VirtualClaim,
 )
-from sha_claim.domain.codes import Icd11Code, InterventionCode, SchemeCode
+from sha_claim.domain.codes import Icd11Code, InterventionCode, ProtocolCode, SchemeCode
 from sha_claim.domain.consent import Otp
+from sha_claim.domain.emergency import EmtClaim, ProtocolLine
 from sha_claim.domain.enums import (
     CancelReason,
     DischargeReason,
@@ -34,9 +35,16 @@ from sha_claim.domain.identifiers import AttachmentId, ConsentToken, InvoiceNumb
 from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
+from sha_claim.domain.prescription import (
+    Dispense,
+    DispensedProduct,
+    DispenseRequest,
+    MedicationOrder,
+    Prescription,
+    PrescriptionRequest,
+)
 from sha_claim.errors import RequestValidationError, Violation
-from sha_claim.ports.preauth_gateway import PreauthGateway
-from sha_claim.ports.virtual_claim_gateway import VirtualClaimGateway
+from sha_claim.ports.claim_gateways import ClaimGateways
 from sha_claim.use_cases.submit_claim import SubmitClaim
 
 
@@ -48,15 +56,13 @@ class ClaimSession:
     """
 
     def __init__(
-        self,
-        gateway: VirtualClaimGateway,
-        preauths: PreauthGateway,
-        token: ConsentToken,
-        claim: VirtualClaim | None = None,
+        self, gateways: ClaimGateways, token: ConsentToken, claim: VirtualClaim | None = None
     ) -> None:
-        self._gateway = gateway
-        self._preauths = preauths
-        self._submit = SubmitClaim(gateway)
+        self._gateway = gateways.claims
+        self._preauths = gateways.preauths
+        self._prescriptions = gateways.prescriptions
+        self._emergency = gateways.emergency
+        self._submit = SubmitClaim(gateways.claims)
         self.consent_token = token
         self.claim = claim
 
@@ -70,6 +76,25 @@ class ClaimSession:
 
     async def restore_intervention(self, code: InterventionCode | str) -> None:
         await self._gateway.restore_intervention(self.consent_token, InterventionCode.of(code))
+
+    async def switch_intervention(
+        self,
+        existing: InterventionCode | str,
+        new: InterventionCode | str,
+        *,
+        retain_bill_items: bool = True,
+        bill_from: datetime | None = None,
+        bill_to: datetime | None = None,
+    ) -> None:
+        """`POST /claims/interventions/switch` — replace an intervention, optionally keeping its billed lines."""
+        await self._gateway.switch_intervention(
+            self.consent_token,
+            InterventionCode.of(existing),
+            InterventionCode.of(new),
+            retain_bill_items,
+            bill_from,
+            bill_to,
+        )
 
     # ── diagnoses ──
 
@@ -284,3 +309,78 @@ class ClaimSession:
             InterventionCode.of(intervention), request_type, practitioner, service_type, emergency_claim_id
         )
         return await self._preauths.request_doctor_consent(self.consent_token, request)
+
+    # ── ePrescriptions ──
+
+    async def prescribe(
+        self,
+        intervention: InterventionCode | str,
+        items: Sequence[MedicationOrder],
+        *,
+        prescriber: PractitionerRef | None = None,
+    ) -> Prescription:
+        """`POST /prescriptions` — record what the doctor ordered under this claim."""
+        try:
+            request = PrescriptionRequest(InterventionCode.of(intervention), tuple(items), prescriber)
+        except ValueError as exc:
+            raise RequestValidationError([Violation("prescription", str(exc))]) from exc
+        return await self._prescriptions.create(self.consent_token, request)
+
+    async def prescription(self) -> Prescription | None:
+        """`GET /prescriptions` — the prescription linked to this claim, if any."""
+        return await self._prescriptions.get(self.consent_token)
+
+    async def dispense(
+        self,
+        intervention: InterventionCode | str,
+        products: Sequence[DispensedProduct],
+        dispensers: Sequence[PractitionerRef],
+    ) -> Dispense:
+        """`POST /prescriptions/dispenses` — what the pharmacy actually handed over."""
+        try:
+            request = DispenseRequest(InterventionCode.of(intervention), tuple(products), tuple(dispensers))
+        except ValueError as exc:
+            raise RequestValidationError([Violation("dispense", str(exc))]) from exc
+        return await self._prescriptions.dispense(self.consent_token, request)
+
+    async def remove_prescription_doctor(
+        self, intervention: InterventionCode | str, registration_number: str
+    ) -> None:
+        await self._prescriptions.remove_doctor(
+            self.consent_token, InterventionCode.of(intervention), registration_number
+        )
+
+    # ── emergency ──
+
+    async def add_protocol(
+        self,
+        protocol: ProtocolCode | str,
+        intervention: InterventionCode | str,
+        unit_price: Money,
+        quantity: int = 1,
+        *,
+        diagnoses: Sequence[Icd11Code | str] = (),
+    ) -> ClaimLine:
+        """`POST /claims/emergency/protocols` — bill a treatment protocol on an emergency claim."""
+        try:
+            line = ProtocolLine(
+                ProtocolCode.of(protocol),
+                InterventionCode.of(intervention),
+                unit_price,
+                quantity,
+                tuple(Icd11Code.of(d) for d in diagnoses),
+            )
+        except ValueError as exc:
+            raise RequestValidationError([Violation("protocol", str(exc))]) from exc
+        return await self._emergency.add_protocol(self.consent_token, line)
+
+    async def add_emergency_doctor(self, doctor: PractitionerRef) -> str:
+        """`POST /claims/doctors` — attach the attending doctor to an emergency claim."""
+        return await self._emergency.add_doctor(self.consent_token, doctor)
+
+    async def remove_emergency_doctor(self) -> None:
+        await self._emergency.remove_doctor(self.consent_token)
+
+    async def open_emt_claim(self, claim: EmtClaim) -> VirtualClaim:
+        """`POST /claims/emt` — the ambulance provider's claim linked to this emergency case."""
+        return await self._emergency.open_emt(self.consent_token, claim)

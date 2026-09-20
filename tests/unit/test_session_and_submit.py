@@ -24,9 +24,17 @@ from sha_claim.domain.claim import (
     PayerClaimRecord,
     VirtualClaim,
 )
-from sha_claim.domain.codes import DocumentType, Icd11Code, InterventionCode, RegulationBody
+from sha_claim.domain.codes import DocumentType, Icd11Code, InterventionCode, ProtocolCode, RegulationBody
 from sha_claim.domain.consent import ConsentProof, Otp
-from sha_claim.domain.enums import CancelReason, DischargeReason, NextOfKinIdType, ServiceType
+from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol, EmtClaim, ProtocolLine
+from sha_claim.domain.enums import (
+    BroughtBy,
+    CancelReason,
+    DischargeReason,
+    ModeOfArrival,
+    NextOfKinIdType,
+    ServiceType,
+)
 from sha_claim.domain.identifiers import (
     AttachmentId,
     ClaimGuid,
@@ -38,7 +46,16 @@ from sha_claim.domain.identifiers import (
 from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
+from sha_claim.domain.prescription import (
+    Dispense,
+    DispensedProduct,
+    DispenseRequest,
+    MedicationOrder,
+    Prescription,
+    PrescriptionRequest,
+)
 from sha_claim.errors import RequestValidationError, SubmissionOutcomeUnknownError, TransportError
+from sha_claim.ports.claim_gateways import ClaimGateways
 from sha_claim.session import ClaimSession
 from sha_claim.use_cases.submit_claim import SubmitClaim
 
@@ -90,6 +107,17 @@ class FakeGateway:
 
     async def restore_intervention(self, token: ConsentToken, code: InterventionCode) -> None:
         self._rec("restore", token, code)
+
+    async def switch_intervention(
+        self,
+        token: ConsentToken,
+        existing: InterventionCode,
+        new: InterventionCode,
+        retain_bill_items: bool,
+        bill_from: datetime | None,
+        bill_to: datetime | None,
+    ) -> None:
+        self._rec("switch", token, existing, new, retain_bill_items)
 
     async def add_diagnosis(
         self, token: ConsentToken, icd: Icd11Code, intervention: InterventionCode
@@ -217,6 +245,79 @@ class FakePreauths:
         return "sent"
 
 
+class FakePrescriptions:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    async def create(self, token: ConsentToken, request: PrescriptionRequest) -> Prescription:
+        self.calls.append(("create", (token, request)))
+        return Prescription("rx", "RX-1", "ACTIVE", "", request.intervention_code, ())
+
+    async def get(self, token: ConsentToken) -> Prescription | None:
+        self.calls.append(("get", (token,)))
+        return None
+
+    async def dispense(self, token: ConsentToken, request: DispenseRequest) -> Dispense:
+        self.calls.append(("dispense", (token, request)))
+        return Dispense(1, "DISPENSED", ())
+
+    async def remove_doctor(
+        self, token: ConsentToken, intervention: InterventionCode, registration_number: str
+    ) -> None:
+        self.calls.append(("remove_doctor", (token, intervention, registration_number)))
+
+
+class FakeEmergency:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    async def open_case(self, case: EmergencyCase) -> VirtualClaim:
+        self.calls.append(("open_case", (case,)))
+        return claim("EMERGENCY")
+
+    async def protocols(self, intervention: InterventionCode, active: bool) -> tuple[EmergencyProtocol, ...]:
+        self.calls.append(("protocols", (intervention, active)))
+        return (EmergencyProtocol(ProtocolCode("EP-1"), "Resus", "TREATMENT", "", "ACTIVE", Money.kes(5000)),)
+
+    async def add_protocol(self, token: ConsentToken, line: ProtocolLine) -> ClaimLine:
+        self.calls.append(("add_protocol", (token, line)))
+        return ClaimLine(
+            LineGuid("L9"),
+            line.intervention_code,
+            line.protocol_code.value,
+            "",
+            Decimal(line.quantity),
+            line.unit_price,
+            None,
+            None,
+        )
+
+    async def add_doctor(self, token: ConsentToken, doctor: PractitionerRef) -> str:
+        self.calls.append(("add_doctor", (token, doctor)))
+        return "added"
+
+    async def remove_doctor(self, token: ConsentToken) -> None:
+        self.calls.append(("remove_doctor", (token,)))
+
+    async def open_emt(self, token: ConsentToken, emt: EmtClaim) -> VirtualClaim:
+        self.calls.append(("open_emt", (token, emt)))
+        return claim("EMT")
+
+
+def gateways(
+    claims: FakeGateway | None = None,
+    preauths: FakePreauths | None = None,
+    prescriptions: FakePrescriptions | None = None,
+    emergency: FakeEmergency | None = None,
+) -> ClaimGateways:
+    return ClaimGateways(
+        claims or FakeGateway(),
+        preauths or FakePreauths(),
+        prescriptions or FakePrescriptions(),
+        emergency or FakeEmergency(),
+    )
+
+
 def preauth() -> Preauthorization:
     return Preauthorization(
         "pg", "pt", CODE, "PENDING", "", True, False, 1, True, False, Money.kes(100), None, None
@@ -225,7 +326,7 @@ def preauth() -> Preauthorization:
 
 async def test_session_threads_the_token_and_coerces_strings() -> None:
     gw = FakeGateway()
-    s = ClaimSession(gw, FakePreauths(), TOKEN)
+    s = ClaimSession(gateways(claims=gw), TOKEN)
     await s.add_intervention("sha-12-001")
     await s.add_diagnosis("1a00", "SHA-12-001")
     line = await s.add_line("SHA-12-001", Money.kes("100"), 2, diagnoses=["1A00"])
@@ -258,7 +359,7 @@ async def test_session_threads_the_token_and_coerces_strings() -> None:
 
 async def test_session_local_validation_short_circuits() -> None:
     gw = FakeGateway()
-    s = ClaimSession(gw, FakePreauths(), TOKEN)
+    s = ClaimSession(gateways(claims=gw), TOKEN)
     with pytest.raises(RequestValidationError, match="quantity"):
         await s.add_line(CODE, Money.kes(1), 0)
     with pytest.raises(RequestValidationError, match="at least one"):
@@ -270,7 +371,7 @@ async def test_session_local_validation_short_circuits() -> None:
 
 async def test_lifecycle_refreshes_snapshot() -> None:
     gw = FakeGateway()
-    s = ClaimSession(gw, FakePreauths(), TOKEN, claim())
+    s = ClaimSession(gateways(claims=gw), TOKEN, claim())
     assert (await s.preview()).workflow_state == "PREVIEWED"
     assert (await s.submit("INV-1")).workflow_state == "SUBMITTED"
     assert s.claim is not None and s.claim.workflow_state == "SUBMITTED"
@@ -280,7 +381,7 @@ async def test_lifecycle_refreshes_snapshot() -> None:
 
 async def test_payer_status_previews_first_when_no_guid() -> None:
     gw = FakeGateway()
-    s = ClaimSession(gw, FakePreauths(), TOKEN)  # resumed from a bare token
+    s = ClaimSession(gateways(claims=gw), TOKEN)  # resumed from a bare token
     records = await s.payer_status("INV-1")
     assert [c[0] for c in gw.calls] == ["preview", "payer_status"]
     assert records[0].status == "RECEIVED"
@@ -298,7 +399,7 @@ async def test_submit_is_attempted_once_and_ambiguity_is_explicit() -> None:
 
 async def test_preauth_flow_through_session() -> None:
     gw, pa = FakeGateway(), FakePreauths()
-    s = ClaimSession(gw, pa, TOKEN)
+    s = ClaimSession(gateways(claims=gw, preauths=pa), TOKEN)
     doctor = PractitionerRef.registered("A1234", RegulationBody.KMPDC)
     start = datetime(2026, 9, 20, 8, tzinfo=UTC)
     created = await s.request_preauth(
@@ -328,7 +429,7 @@ async def test_preauth_flow_through_session() -> None:
 
 
 async def test_preauth_local_validation() -> None:
-    s = ClaimSession(FakeGateway(), FakePreauths(), TOKEN)
+    s = ClaimSession(gateways(), TOKEN)
     start = datetime(2026, 9, 20, 8, tzinfo=UTC)
     items = [PreauthItem("CS", "x", 1, Money.kes(1))]
     with pytest.raises(RequestValidationError, match="service_end"):
@@ -377,7 +478,7 @@ async def test_inpatient_discharge_flow() -> None:
     from datetime import date
 
     gw = FakeGateway()
-    s = ClaimSession(gw, FakePreauths(), TOKEN, claim())
+    s = ClaimSession(gateways(claims=gw), TOKEN, claim())
     contact = await s.add_next_of_kin(
         full_name="Jane Doe",
         id_number="1",
@@ -401,8 +502,91 @@ async def test_inpatient_discharge_flow() -> None:
 
 
 async def test_next_of_kin_validation() -> None:
-    s = ClaimSession(FakeGateway(), FakePreauths(), TOKEN)
+    s = ClaimSession(gateways(), TOKEN)
     with pytest.raises(RequestValidationError, match="contact_value"):
         await s.add_next_of_kin(
             full_name="J", id_number="1", id_type=NextOfKinIdType.NATIONAL_ID, contact_value=" "
         )
+
+
+async def test_prescription_flow_through_session() -> None:
+    from datetime import date
+
+    rx = FakePrescriptions()
+    s = ClaimSession(gateways(prescriptions=rx), TOKEN)
+    order = MedicationOrder("AMOX500", 1, "TABLET", 3, "DAY", 5, "DAY", date(2026, 9, 20))
+    doctor = PractitionerRef.registered("A1", RegulationBody.KMPDC)
+    created = await s.prescribe("sha-12-004", [order], prescriber=doctor)
+    assert created.code == "RX-1" and created.intervention_code == InterventionCode("SHA-12-004")
+    assert await s.prescription() is None
+    dispensed = await s.dispense(
+        "SHA-12-004", [DispensedProduct("AMOX500-GEN", 15, Money.kes("12.50"))], [doctor]
+    )
+    assert dispensed.status == "DISPENSED"
+    await s.remove_prescription_doctor("SHA-12-004", "A1")
+    assert [c[0] for c in rx.calls] == ["create", "get", "dispense", "remove_doctor"]
+    assert all(c[1][0] == TOKEN for c in rx.calls)
+
+
+async def test_prescription_local_validation() -> None:
+    from datetime import date
+
+    s = ClaimSession(gateways(), TOKEN)
+    with pytest.raises(RequestValidationError, match="medication"):
+        await s.prescribe(CODE, [])
+    with pytest.raises(RequestValidationError, match="dispensing practitioner"):
+        await s.dispense(CODE, [DispensedProduct("P", 1, Money.kes(1))], [])
+    with pytest.raises(ValueError, match="dose_quantity"):
+        MedicationOrder("X", 0, "TAB", 1, "DAY", 1, "DAY", date(2026, 1, 1))
+    with pytest.raises(ValueError, match="refill"):
+        MedicationOrder("X", 1, "TAB", 1, "DAY", 1, "DAY", date(2026, 1, 1), needs_refill=True)
+    with pytest.raises(ValueError, match="end_date"):
+        MedicationOrder("X", 1, "TAB", 1, "DAY", 1, "DAY", date(2026, 1, 2), end_date=date(2026, 1, 1))
+
+
+async def test_emergency_flow_through_session() -> None:
+    em = FakeEmergency()
+    s = ClaimSession(gateways(emergency=em), TOKEN)
+    doctor = PractitionerRef.registered("A1", RegulationBody.KMPDC)
+    line = await s.add_protocol("EP-1", "SHA-19-001", Money.kes(5000), 2, diagnoses=["NF0A"])
+    assert line.item_code == "EP-1" and line.quantity == 2
+    assert await s.add_emergency_doctor(doctor) == "added"
+    await s.remove_emergency_doctor()
+    emt = EmtClaim(
+        ProtocolCode("EP-1"),
+        "CASE-1",
+        "A1",
+        "AMB-9",
+        PatientId("CR1"),
+        Otp("123456"),
+        (Icd11Code("NF0A"),),
+        (InterventionCode("SHA-19-001"),),
+    )
+    assert (await s.open_emt_claim(emt)).workflow_state == "EMT"
+    assert [c[0] for c in em.calls] == ["add_protocol", "add_doctor", "remove_doctor", "open_emt"]
+    with pytest.raises(RequestValidationError, match="quantity"):
+        await s.add_protocol("EP-1", "SHA-19-001", Money.kes(1), 0)
+
+
+def test_emergency_command_invariants() -> None:
+    doctor = PractitionerRef.registered("A1", RegulationBody.KMPDC)
+    with pytest.raises(ValueError, match="reference_number"):
+        EmergencyCase(doctor, " ", BroughtBy.RELATIVE, ModeOfArrival.WALK_IN, (CODE,))
+    with pytest.raises(ValueError, match="intervention"):
+        EmergencyCase(doctor, "REF", BroughtBy.RELATIVE, ModeOfArrival.WALK_IN, ())
+    with pytest.raises(ValueError, match="case_number"):
+        EmtClaim(
+            ProtocolCode("P"), "", "A1", "AMB", PatientId("CR1"), Otp("1"), (Icd11Code("NF0A"),), (CODE,)
+        )
+    with pytest.raises(ValueError, match="diagnosis"):
+        EmtClaim(ProtocolCode("P"), "C", "A1", "AMB", PatientId("CR1"), Otp("1"), (), (CODE,))
+
+
+async def test_switch_intervention() -> None:
+    gw = FakeGateway()
+    await ClaimSession(gateways(claims=gw), TOKEN).switch_intervention(
+        "SHA-12-001", "sha-12-002", retain_bill_items=False
+    )
+    assert gw.calls == [
+        ("switch", (TOKEN, InterventionCode("SHA-12-001"), InterventionCode("SHA-12-002"), False))
+    ]

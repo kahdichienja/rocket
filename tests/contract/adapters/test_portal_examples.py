@@ -7,7 +7,13 @@ from pydantic import BaseModel
 
 from sha_claim.adapters.wire import mappers
 from sha_claim.adapters.wire.schemas.authorization import AuthorizationWire
-from sha_claim.adapters.wire.schemas.benefits import BenefitPackageWire, InterventionWire, SubBenefitWire
+from sha_claim.adapters.wire.schemas.benefits import (
+    BedOccupancyWire,
+    BenefitPackageWire,
+    InterventionWire,
+    SubBenefitWire,
+    UtilizationWire,
+)
 from sha_claim.adapters.wire.schemas.claim import (
     ClaimAttachmentWire,
     ClaimDiagnosisWire,
@@ -21,7 +27,10 @@ from sha_claim.adapters.wire.schemas.claim import (
 )
 from sha_claim.adapters.wire.schemas.common import Page
 from sha_claim.adapters.wire.schemas.eligibility import EligibilityWire
+from sha_claim.adapters.wire.schemas.emergency import EmergencyProtocolWire
+from sha_claim.adapters.wire.schemas.files import DownloadLinkWire, StoredFileWire
 from sha_claim.adapters.wire.schemas.preauth import DoctorConsentWire, PreauthorizationWire
+from sha_claim.adapters.wire.schemas.prescription import DispenseWire, PrescriptionWire
 from tests.conftest import load_examples
 
 # endpoint → (wire model, mapper or None). Page[...] models are unwrapped via `.results`.
@@ -38,6 +47,7 @@ CASES: dict[str, tuple[type[BaseModel], Any]] = {
     "POST /api/v1/claims/close": (VirtualClaimWire, mappers.to_virtual_claim),
     "POST /api/v1/claims/interventions": (ClaimInterventionWire, mappers.to_claim_intervention),
     "POST /api/v1/claims/interventions/retire": (MessageWire, None),
+    "POST /api/v1/claims/interventions/switch": (MessageWire, None),
     "POST /api/v1/claims/interventions/restore": (MessageWire, None),
     "POST /api/v1/claims/diagnoses": (ClaimDiagnosisWire, mappers.to_claim_diagnosis),
     "PATCH /api/v1/claims/diagnoses": (MessageWire, None),
@@ -55,6 +65,18 @@ CASES: dict[str, tuple[type[BaseModel], Any]] = {
     "POST /api/v1/claims/discharge": (VirtualClaimWire, mappers.to_virtual_claim),
     "POST /api/v1/patients/next-of-kin/contacts": (NextOfKinContactWire, mappers.to_next_of_kin_contact),
     "POST /api/v1/claims/lines/resubmit": (LineResubmissionWire, mappers.to_line_resubmission),
+    "GET /api/v1/prescriptions": (PrescriptionWire, mappers.to_prescription),
+    "POST /api/v1/prescriptions": (PrescriptionWire, mappers.to_prescription),
+    "POST /api/v1/prescriptions/dispenses": (DispenseWire, mappers.to_dispense),
+    "POST /api/v1/claims/emergency": (VirtualClaimWire, mappers.to_virtual_claim),
+    "GET /api/v1/claims/emergency/protocols": (Page[EmergencyProtocolWire], mappers.to_emergency_protocol),
+    "POST /api/v1/claims/emergency/protocols": (ClaimLineWire, mappers.to_claim_line),
+    "POST /api/v1/claims/doctors": (MessageWire, None),
+    "POST /api/v1/claims/emt": (VirtualClaimWire, mappers.to_virtual_claim),
+    "GET /api/v1/patients/benefits/utilization": (UtilizationWire, mappers.to_utilization),
+    "GET /api/v1/facilities/{facilityCode}/beds/occupancy": (BedOccupancyWire, mappers.to_bed_occupancy),
+    "POST /api/v1/uploads": (StoredFileWire, mappers.to_stored_file),
+    "GET /api/v1/uploads/{file_id}": (DownloadLinkWire, mappers.to_download_link),
 }
 
 
@@ -84,6 +106,9 @@ def test_every_implemented_endpoint_is_covered_here() -> None:
             "POST /api/v1/claims/authorizations/{consent_token}/reject",  # `{message}` only, no schema
             "DELETE /api/v1/preauths/doctors",  # 200 with empty body
             "POST /api/v1/preauths",  # portal example echoes the request, not a Preauthorization
+            "DELETE /api/v1/prescriptions/doctors",  # 200 with empty body
+            "DELETE /api/v1/claims/doctors",  # 204, no body
+            "GET /api/v1/patients/pomsf-balances",  # returned raw by design
         }
     )
     assert uncovered == set(), f"add response-shape cases for: {sorted(uncovered)}"

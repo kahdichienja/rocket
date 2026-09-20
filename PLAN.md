@@ -10,15 +10,16 @@ published to PyPI so other facilities/HMIS vendors can use it.
 - How the endpoints chain into claim workflows: [docs/api/WORKFLOWS.md](docs/api/WORKFLOWS.md)
 
 **Status 2026-09-20:** docs captured, architecture revised (not FHIR; server-owned virtual claim keyed by `consent_token`).
-**Implemented: 34 of 49 endpoints — the complete outpatient + inpatient + pre-auth story.** Live-verified on DHA UAT: auth, eligibility, benefits/sub-benefits/interventions,
+**Implemented: 49 of 49 endpoints.** A guard test fails if DHA publishes a new one. Live-verified on DHA UAT: auth, eligibility, benefits/sub-benefits/interventions,
 consent (authorize / get / reject). Contract-tested against documented shapes (live blocked by Q11): `claims.open_visit`
 and the whole `ClaimSession` — interventions, diagnoses, lines, attachments, preview, submit, close, payer status,
 pre-authorisation (create / list / remove diagnosis / remove doctor / cancel), doctor consent, inpatient discharge
-(OTP + discharge), next-of-kin contacts, line resubmission.
+(OTP + discharge), next-of-kin contacts, line resubmission, ePrescriptions (prescribe / get / dispense / remove doctor), emergency cases (open / protocols / bill protocol / doctors / EMT), intervention switch, utilization, POMSF balances,
+bed occupancy, uploads. Package builds (`python -m build`), passes `twine check`, installs from the wheel with only
+`httpx` + `pydantic` as runtime dependencies.
 Every response schema is validated against the portal's own example JSON (`docs/api/spec/examples.json`).
-Gates green: ruff, mypy --strict, import-linter, 192 tests / 95.4 % coverage. **Remaining for v1:** live-verify the claim
-flow once a UAT beneficiary with a reachable phone exists (Q11), then release `0.1.0`. **v2:** emergency/EMT (6),
-ePrescriptions (4), uploads (2), utilization/POMSF/bed occupancy (3).
+Gates green: ruff, mypy --strict, import-linter, 245 tests / 95.3 % coverage. **Remaining for v1:** live-verify the claim
+flow once a UAT beneficiary with a reachable phone exists (Q11), then release `0.1.0`. 
 
 ---
 
@@ -39,7 +40,6 @@ ePrescriptions (4), uploads (2), utilization/POMSF/bed occupancy (3).
 **Out of scope (v1)**
 
 - Persistence of claims or consent tokens (the SDK is stateless; NaCare owns storage).
-- Emergency / EMT claims, ePrescriptions & dispensing, POMSF balances, bed occupancy (v2 — ports exist, adapters don't).
 - Remittance / payment reconciliation (not exposed by this API).
 - CLI, web UI, Django/FastAPI integrations (separate packages if ever).
 
@@ -101,7 +101,7 @@ No phase starts coding until its domain vocabulary is confirmed against the offi
 - [ ] End-to-end examples against UAT: `examples/outpatient_claim.py`, `examples/inpatient_discharge.py`, `examples/preauth.py`
 
 ### Phase 6 — Release  `[ ]`
-- [ ] `0.1.0` to TestPyPI → PyPI via trusted publishing (no long-lived tokens)
+- [~] `0.1.0` to TestPyPI → PyPI via trusted publishing (no long-lived tokens) — build + twine check green; blocked on Q11 live run
 - [ ] Integrate into NaCare (`Nacare/backend` or a new `Nacare/claims` module) and
       feed real-world friction back as issues before `1.0.0`
 

@@ -87,6 +87,75 @@ SDK_REQUESTS: list[tuple[str, str, set[str], set[str]]] = [
         },
     ),
     ("post", "/api/v1/claims/lines/resubmit", set(), {"consent_token"}),
+    ("get", "/api/v1/prescriptions", {"consent_token"}, set()),
+    ("post", "/api/v1/prescriptions", set(), {"consent_token", "intervention_code", "items"}),
+    (
+        "post",
+        "/api/v1/prescriptions/dispenses",
+        set(),
+        {"consent_token", "intervention_code", "actual_products", "doctors"},
+    ),
+    (
+        "delete",
+        "/api/v1/prescriptions/doctors",
+        set(),
+        {"consent_token", "intervention_code", "practitioner_registration_number"},
+    ),
+    (
+        "post",
+        "/api/v1/claims/interventions/switch",
+        set(),
+        {"consent_token", "existing_intervention_code", "new_intervention_code", "retain_bill_items"},
+    ),
+    (
+        "post",
+        "/api/v1/claims/emergency",
+        set(),
+        {
+            "identification_number",
+            "identification_type",
+            "regulation_body",
+            "reference_number",
+            "brought_by",
+            "mode_of_arrival",
+            "interventions",
+        },
+    ),
+    ("get", "/api/v1/claims/emergency/protocols", {"active", "intervention_code"}, set()),
+    (
+        "post",
+        "/api/v1/claims/emergency/protocols",
+        set(),
+        {"consent_token", "protocol_code", "intervention_code", "unit_price", "quantity"},
+    ),
+    (
+        "post",
+        "/api/v1/claims/doctors",
+        set(),
+        {"consent_token", "identification_number", "identification_type", "regulation_body"},
+    ),
+    ("delete", "/api/v1/claims/doctors", set(), {"consent_token"}),
+    (
+        "post",
+        "/api/v1/claims/emt",
+        set(),
+        {
+            "consent_token",
+            "protocol_code",
+            "case_number",
+            "practitioner_reg_number",
+            "beneficiary_cr_id",
+            "otp",
+            "provider_registration_number",
+            "diagnoses",
+            "interventions",
+        },
+    ),
+    ("get", "/api/v1/patients/benefits/utilization", {"patient_id", "intervention_code"}, set()),
+    ("get", "/api/v1/patients/pomsf-balances", {"patient_id", "policy_year"}, set()),
+    ("get", "/api/v1/facilities/{facilityCode}/beds/occupancy", set(), set()),
+    ("post", "/api/v1/uploads", set(), {"file"}),
+    ("get", "/api/v1/uploads/{file_id}", set(), set()),
 ]
 
 
@@ -109,3 +178,10 @@ def test_auth_token_endpoint_unchanged() -> None:
     token = _endpoints("auth")[("post", "/tenants/token")]
     assert token["requestBody"]["contentType"] == "application/x-www-form-urlencoded"
     assert {p["name"] for p in token["requestBody"]["properties"]} == {"client_id", "client_secret"}
+
+
+def test_every_spec_endpoint_is_implemented() -> None:
+    """49/49: if DHA adds an endpoint, this fails and we decide deliberately whether to cover it."""
+    implemented = {(m, p) for m, p, _, _ in SDK_REQUESTS}
+    published = set(_endpoints("eclaims"))
+    assert published - implemented == set(), f"not implemented: {sorted(published - implemented)}"

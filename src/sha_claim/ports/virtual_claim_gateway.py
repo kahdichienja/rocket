@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Protocol
 
 from sha_claim.domain.attachments import Attachment
@@ -59,6 +60,16 @@ class VirtualClaimGateway(VisitOpener, ClaimSubmitter, Protocol):
     async def retire_intervention(self, token: ConsentToken, code: InterventionCode) -> None: ...
 
     async def restore_intervention(self, token: ConsentToken, code: InterventionCode) -> None: ...
+
+    async def switch_intervention(
+        self,
+        token: ConsentToken,
+        existing: InterventionCode,
+        new: InterventionCode,
+        retain_bill_items: bool,
+        bill_from: datetime | None,
+        bill_to: datetime | None,
+    ) -> None: ...
 
     async def add_diagnosis(
         self, token: ConsentToken, icd: Icd11Code, intervention: InterventionCode

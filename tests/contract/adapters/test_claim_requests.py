@@ -127,3 +127,18 @@ def test_discharge_and_next_of_kin_requests() -> None:
         "contact_value": "+254700000000",
     }
     assert requests.resubmit_lines(TOKEN).json == {"consent_token": "CR1-ABCDEFGHIJ"}
+
+
+def test_switch_intervention_request() -> None:
+    from datetime import UTC, datetime
+
+    r = requests.switch_intervention(
+        TOKEN, CODE, InterventionCode("SHA-12-002"), True, datetime(2026, 9, 20, tzinfo=UTC), None
+    )
+    assert r.json == {
+        "consent_token": "CR1-ABCDEFGHIJ",
+        "existing_intervention_code": "SHA-12-001",
+        "new_intervention_code": "SHA-12-002",
+        "retain_bill_items": True,
+        "bill_from": "2026-09-20T00:00:00+00:00",
+    }

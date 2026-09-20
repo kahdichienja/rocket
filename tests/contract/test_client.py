@@ -217,3 +217,154 @@ async def test_preauth_over_http_is_multipart_with_attachment_parts(settings: SH
     assert create.calls[0].request.headers["content-type"].startswith("multipart/form-data")
     assert b'name="attachment_0"; filename="form.pdf"' in body
     assert b'name="items"\r\n\r\n[{"item_code": "CS"' in body
+
+
+@respx.mock
+async def test_prescription_get_tolerates_object_list_page_and_empty(settings: SHASettings) -> None:
+    root = settings.api_root
+    respx.post(f"{root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
+    route = respx.get(f"{root}/prescriptions").mock(
+        side_effect=[
+            httpx.Response(200, json={"guid": "a", "status": "ACTIVE"}),
+            httpx.Response(200, json=[{"guid": "b"}]),
+            httpx.Response(200, json={"pageSize": 25, "results": [{"guid": "c"}]}),
+            httpx.Response(200, json={"pageSize": 25, "results": []}),
+            httpx.Response(200, json=[]),
+            httpx.Response(200, content=b""),
+        ]
+    )
+    async with AsyncSHAClient(settings) as sha:
+        session = sha.claims.resume("CR0-TOKEN12345")
+        seen = [await session.prescription() for _ in range(6)]
+    assert [p.guid if p else None for p in seen] == ["a", "b", "c", None, None, None]
+    assert route.call_count == 6
+
+
+@respx.mock
+async def test_prescribe_and_dispense_over_http(settings: SHASettings) -> None:
+    from datetime import date
+
+    from sha_claim import DispensedProduct, MedicationOrder, Money, PractitionerRef, RegulationBody
+
+    root = settings.api_root
+    respx.post(f"{root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
+    create = respx.post(f"{root}/prescriptions").mock(
+        return_value=httpx.Response(
+            200,
+            json={"guid": "rx", "code": "RX-1", "status": "ACTIVE", "intervention": {"code": "SHA-12-004"}},
+        )
+    )
+    respx.post(f"{root}/prescriptions/dispenses").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 7,
+                "status": "DISPENSED",
+                "dispenseDosages": [
+                    {"medication": "Amoxicillin", "doseQuantity": 1, "medicationPrice": "12.5"}
+                ],
+            },
+        )
+    )
+    respx.delete(f"{root}/prescriptions/doctors").mock(return_value=httpx.Response(200, json={}))
+
+    doctor = PractitionerRef.registered("A1", RegulationBody.KMPDC)
+    async with AsyncSHAClient(settings) as sha:
+        session = sha.claims.resume("CR0-TOKEN12345")
+        rx = await session.prescribe(
+            "SHA-12-004",
+            [MedicationOrder("AMOX500", 1, "TABLET", 3, "DAY", 5, "DAY", date(2026, 9, 20))],
+            prescriber=doctor,
+        )
+        dispensed = await session.dispense(
+            "SHA-12-004", [DispensedProduct("AMOX500-GEN", 15, Money.kes("12.50"))], [doctor]
+        )
+        await session.remove_prescription_doctor("SHA-12-004", "A1")
+
+    assert (
+        rx.code == "RX-1" and rx.intervention_code is not None and rx.intervention_code.value == "SHA-12-004"
+    )
+    assert dispensed.dosages[0].price == Money.kes("12.50") and dispensed.dosages[0].dose_quantity == 1
+    sent = create.calls[0].request.content
+    assert b'"generic_concept_code":"AMOX500"' in sent and b'"regulation_body":"KMPDC"' in sent
+
+
+@respx.mock
+async def test_emergency_case_over_http(settings: SHASettings) -> None:
+    from sha_claim import BroughtBy, ModeOfArrival, Money, PractitionerRef, RegulationBody
+
+    root = settings.api_root
+    respx.post(f"{root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
+    respx.post(f"{root}/claims/emergency").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "E",
+                "authorization_code": "CR0-EMERG12345",
+                "workflow_state": "OPEN",
+                "service_type": "EMERGENCY",
+            },
+        )
+    )
+    respx.get(f"{root}/claims/emergency/protocols").mock(
+        return_value=httpx.Response(
+            200, json={"results": [{"protocolCode": "EP-1", "name": "Resus", "applicableTariff": "5000"}]}
+        )
+    )
+    protocol = respx.post(f"{root}/claims/emergency/protocols").mock(
+        return_value=httpx.Response(
+            200, json={"id": "L1", "item_code": "EP-1", "quantity": 1, "unit_price": 5000}
+        )
+    )
+
+    doctor = PractitionerRef.registered("A1", RegulationBody.KMPDC)
+    async with AsyncSHAClient(settings) as sha:
+        protocols = await sha.emergency.protocols("SHA-19-001")
+        session = await sha.emergency.open_case(
+            doctor, "REF-1", BroughtBy.PARAMEDICS, ModeOfArrival.AMBULANCE, ["SHA-19-001"]
+        )
+        line = await session.add_protocol(
+            protocols[0].code, "SHA-19-001", protocols[0].tariff or Money.kes(0)
+        )
+
+    assert session.consent_token.value == "CR0-EMERG12345" and session.claim is not None
+    assert protocols[0].tariff == Money.kes(5000) and line.unit_price == Money.kes(5000)
+    assert protocol.calls[0].request.headers["content-type"].startswith("multipart/form-data")
+
+
+@respx.mock
+async def test_files_and_occupancy_over_http(settings: SHASettings) -> None:
+    root = settings.api_root
+    respx.post(f"{root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
+    up = respx.post(f"{root}/uploads").mock(
+        return_value=httpx.Response(200, json={"file_id": "f1", "path": "p"})
+    )
+    respx.get(f"{root}/uploads/f1").mock(
+        return_value=httpx.Response(200, json={"message": "ok", "data": {"url": "https://signed"}})
+    )
+    respx.get(f"{root}/facilities/FID-1/beds/occupancy").mock(
+        return_value=httpx.Response(
+            200, json={"name": "H", "bed_occupancy_rate": {"total_number_of_bed": 10, "total_ip_visits": 5}}
+        )
+    )
+    respx.get(f"{root}/patients/pomsf-balances").mock(
+        return_value=httpx.Response(200, json={"memberNumber": "M1"})
+    )
+
+    async with AsyncSHAClient(settings) as sha:
+        stored = await sha.files.upload("x.pdf", b"%PDF", "application/pdf")
+        link = await sha.files.download_link(stored.file_id or "f1")
+        beds = await sha.eligibility.bed_occupancy("FID-1")
+        pomsf = await sha.eligibility.pomsf_balances("CR1", "2026")
+
+    assert stored.file_id is not None and link.url == "https://signed"
+    assert beds.occupancy_rate == 0.5 and pomsf["memberNumber"] == "M1"
+    assert b'filename="x.pdf"' in up.calls[0].request.content

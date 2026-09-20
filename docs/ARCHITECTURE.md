@@ -237,7 +237,8 @@ async with (
     status = await sha.claims.payer_status(receipt.claim_guid, provider_claim_no="INV-1")
 ```
 
-Resource groups: `sha.eligibility`, `sha.consent`, `sha.claims`, `sha.preauths`, `sha.files`.
+Resource groups: `sha.eligibility`, `sha.consent`, `sha.claims`, `sha.emergency`. Pre-auth, prescriptions and
+emergency billing hang off `ClaimSession` because they are all keyed by the claim's consent token.
 Everything is injectable (`AsyncSHAClient(settings, transport=..., clock=...)`) for tests.
 
 Sync client: deferred; if needed, generated via `unasync`, never hand-copied.

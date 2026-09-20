@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -10,7 +11,13 @@ from pydantic import BaseModel, ValidationError
 from sha_claim.adapters.wire import mappers, requests
 from sha_claim.adapters.wire.error_translator import raise_for_status
 from sha_claim.adapters.wire.schemas.authorization import AuthorizationWire
-from sha_claim.adapters.wire.schemas.benefits import BenefitPackageWire, InterventionWire, SubBenefitWire
+from sha_claim.adapters.wire.schemas.benefits import (
+    BedOccupancyWire,
+    BenefitPackageWire,
+    InterventionWire,
+    SubBenefitWire,
+    UtilizationWire,
+)
 from sha_claim.adapters.wire.schemas.claim import (
     ClaimAttachmentWire,
     ClaimDiagnosisWire,
@@ -24,10 +31,19 @@ from sha_claim.adapters.wire.schemas.claim import (
 )
 from sha_claim.adapters.wire.schemas.common import Page
 from sha_claim.adapters.wire.schemas.eligibility import EligibilityWire
+from sha_claim.adapters.wire.schemas.emergency import EmergencyProtocolWire
+from sha_claim.adapters.wire.schemas.files import DownloadLinkWire, StoredFileWire
 from sha_claim.adapters.wire.schemas.preauth import DoctorConsentWire, PreauthorizationWire
+from sha_claim.adapters.wire.schemas.prescription import DispenseWire, PrescriptionWire
 from sha_claim.adapters.wire.transport import Transport, WireResponse
 from sha_claim.domain.attachments import Attachment
-from sha_claim.domain.benefits import BenefitPackage, InterventionCoverage, SubBenefit
+from sha_claim.domain.benefits import (
+    BedOccupancy,
+    BenefitPackage,
+    InterventionCoverage,
+    SubBenefit,
+    UtilizationBalance,
+)
 from sha_claim.domain.claim import (
     ClaimAttachment,
     ClaimDiagnosis,
@@ -45,16 +61,22 @@ from sha_claim.domain.claim import (
 from sha_claim.domain.codes import Icd11Code, InterventionCode
 from sha_claim.domain.consent import Authorization, ConsentProof, Otp
 from sha_claim.domain.eligibility import Eligibility
+from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol, EmtClaim, ProtocolLine
 from sha_claim.domain.enums import CancelReason, IdentificationType, ServiceType
+from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import (
     AttachmentId,
     ClaimGuid,
     ConsentToken,
+    FacilityCode,
+    FileId,
     InvoiceNumber,
     LineGuid,
     PatientId,
 )
+from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, Preauthorization, PreauthRequest
+from sha_claim.domain.prescription import Dispense, DispenseRequest, Prescription, PrescriptionRequest
 from sha_claim.errors import UnexpectedResponseError
 
 M = TypeVar("M", bound=BaseModel)
@@ -93,6 +115,25 @@ class HttpEligibilityGateway:
         response = await self._transport.send(requests.interventions(patient, sub_benefit_code))
         page = parse_as(Page[InterventionWire], response)
         return tuple(mappers.to_intervention_coverage(i) for i in page.results)
+
+    async def utilization(self, patient: PatientId, intervention: InterventionCode) -> UtilizationBalance:
+        response = await self._transport.send(requests.utilization(patient, intervention))
+        return mappers.to_utilization(parse_as(UtilizationWire, response))
+
+    async def pomsf_balances(
+        self, patient: PatientId, policy_year: str, principal_member_number: str | None
+    ) -> Mapping[str, Any]:
+        """POMSF (civil-servant scheme) balances. Returned raw: the shape is large and NaCare has no POMSF members yet."""
+        response = await self._transport.send(
+            requests.pomsf_balances(patient, policy_year, principal_member_number)
+        )
+        raise_for_status(response)
+        payload = response.json()
+        return dict(payload) if isinstance(payload, dict) else {"results": payload}
+
+    async def bed_occupancy(self, facility: FacilityCode) -> BedOccupancy:
+        response = await self._transport.send(requests.bed_occupancy(facility))
+        return mappers.to_bed_occupancy(parse_as(BedOccupancyWire, response))
 
 
 class HttpConsentGateway:
@@ -151,6 +192,18 @@ class HttpVirtualClaimGateway:
 
     async def restore_intervention(self, token: ConsentToken, code: InterventionCode) -> None:
         raise_for_status(await self._transport.send(requests.restore_intervention(token, code)))
+
+    async def switch_intervention(
+        self,
+        token: ConsentToken,
+        existing: InterventionCode,
+        new: InterventionCode,
+        retain_bill_items: bool,
+        bill_from: datetime | None,
+        bill_to: datetime | None,
+    ) -> None:
+        request = requests.switch_intervention(token, existing, new, retain_bill_items, bill_from, bill_to)
+        raise_for_status(await self._transport.send(request))
 
     async def add_diagnosis(
         self, token: ConsentToken, icd: Icd11Code, intervention: InterventionCode
@@ -268,3 +321,85 @@ class HttpPreauthGateway:
     async def request_doctor_consent(self, token: ConsentToken, request: DoctorConsentRequest) -> str:
         response = await self._transport.send(requests.doctor_consent(token, request))
         return parse_as(DoctorConsentWire, response).message
+
+
+class HttpPrescriptionGateway:
+    def __init__(self, transport: Transport) -> None:
+        self._transport = transport
+
+    async def create(self, token: ConsentToken, request: PrescriptionRequest) -> Prescription:
+        response = await self._transport.send(requests.create_prescription(token, request))
+        return mappers.to_prescription(parse_as(PrescriptionWire, response))
+
+    async def get(self, token: ConsentToken) -> Prescription | None:
+        response = await self._transport.send(requests.get_prescription(token))
+        raise_for_status(response)
+        payload = response.json()
+        if not payload:
+            return None
+        if isinstance(payload, list):
+            payload = payload[0] if payload else None
+        elif isinstance(payload, dict) and "results" in payload:
+            results = payload.get("results") or []
+            payload = results[0] if results else None
+        if not payload:
+            return None
+        try:
+            return mappers.to_prescription(PrescriptionWire.model_validate(payload))
+        except ValidationError as exc:
+            raise UnexpectedResponseError(f"PrescriptionWire: {exc}") from exc
+
+    async def dispense(self, token: ConsentToken, request: DispenseRequest) -> Dispense:
+        response = await self._transport.send(requests.create_dispense(token, request))
+        return mappers.to_dispense(parse_as(DispenseWire, response))
+
+    async def remove_doctor(
+        self, token: ConsentToken, intervention: InterventionCode, registration_number: str
+    ) -> None:
+        raise_for_status(
+            await self._transport.send(
+                requests.remove_prescription_doctor(token, intervention, registration_number)
+            )
+        )
+
+
+class HttpEmergencyGateway:
+    def __init__(self, transport: Transport) -> None:
+        self._transport = transport
+
+    async def open_case(self, case: EmergencyCase) -> VirtualClaim:
+        response = await self._transport.send(requests.open_emergency_case(case))
+        return mappers.to_virtual_claim(parse_as(VirtualClaimWire, response))
+
+    async def protocols(self, intervention: InterventionCode, active: bool) -> tuple[EmergencyProtocol, ...]:
+        response = await self._transport.send(requests.emergency_protocols(intervention, active))
+        page = parse_as(Page[EmergencyProtocolWire], response)
+        return tuple(mappers.to_emergency_protocol(p) for p in page.results)
+
+    async def add_protocol(self, token: ConsentToken, line: ProtocolLine) -> ClaimLine:
+        response = await self._transport.send(requests.add_emergency_protocol(token, line))
+        return mappers.to_claim_line(parse_as(ClaimLineWire, response))
+
+    async def add_doctor(self, token: ConsentToken, doctor: PractitionerRef) -> str:
+        response = await self._transport.send(requests.add_emergency_doctor(token, doctor))
+        return parse_as(MessageWire, response).message
+
+    async def remove_doctor(self, token: ConsentToken) -> None:
+        raise_for_status(await self._transport.send(requests.remove_emergency_doctor(token)))
+
+    async def open_emt(self, token: ConsentToken, claim: EmtClaim) -> VirtualClaim:
+        response = await self._transport.send(requests.open_emt_claim(token, claim))
+        return mappers.to_virtual_claim(parse_as(VirtualClaimWire, response))
+
+
+class HttpFileGateway:
+    def __init__(self, transport: Transport) -> None:
+        self._transport = transport
+
+    async def upload(self, filename: str, content: bytes, content_type: str) -> StoredFile:
+        response = await self._transport.send(requests.upload(filename, content, content_type))
+        return mappers.to_stored_file(parse_as(StoredFileWire, response))
+
+    async def download_link(self, file_id: FileId) -> DownloadLink:
+        response = await self._transport.send(requests.download_link(file_id))
+        return mappers.to_download_link(parse_as(DownloadLinkWire, response))

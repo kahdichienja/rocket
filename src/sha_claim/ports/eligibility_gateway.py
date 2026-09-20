@@ -1,11 +1,19 @@
 from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Mapping
+from typing import Any, Protocol
 
-from sha_claim.domain.benefits import BenefitPackage, InterventionCoverage, SubBenefit
+from sha_claim.domain.benefits import (
+    BedOccupancy,
+    BenefitPackage,
+    InterventionCoverage,
+    SubBenefit,
+    UtilizationBalance,
+)
+from sha_claim.domain.codes import InterventionCode
 from sha_claim.domain.eligibility import Eligibility
 from sha_claim.domain.enums import IdentificationType
-from sha_claim.domain.identifiers import PatientId
+from sha_claim.domain.identifiers import FacilityCode, PatientId
 
 
 class EligibilityCheck(Protocol):
@@ -24,3 +32,11 @@ class EligibilityGateway(EligibilityCheck, Protocol):
     async def interventions(
         self, patient: PatientId, sub_benefit_code: str
     ) -> tuple[InterventionCoverage, ...]: ...
+
+    async def utilization(self, patient: PatientId, intervention: InterventionCode) -> UtilizationBalance: ...
+
+    async def pomsf_balances(
+        self, patient: PatientId, policy_year: str, principal_member_number: str | None
+    ) -> Mapping[str, Any]: ...
+
+    async def bed_occupancy(self, facility: FacilityCode) -> BedOccupancy: ...

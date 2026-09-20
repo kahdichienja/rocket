@@ -182,6 +182,9 @@ Claim attachments can also be sent inline via `POST /claims/attachments`.
 - `GET /patients/benefits/utilization` returns 400 `invalid character 'P' looking for beginning of value` on UAT for the
   synthetic patient — an upstream parsing bug, not a request error.
 - `POST /claims/authorizations/{token}/reject` → `200 {"message":"The authorization has been closed."}`.
+- **`GET /claims/authorizations` ignores `beneficiary_code`** (`?beneficiary_code=DOES-NOT-EXIST` returns the same 25 rows as no
+  filter): it lists the *facility's* authorizations. The SDK filters by `beneficiaryCode` client-side. Also observed status
+  `AUTHORIZED_PENDING_VISIT`.
 
 ### Live claim lifecycle, UAT 2026-09-20 (evening) — the rules nobody documented
 

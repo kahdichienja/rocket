@@ -368,3 +368,24 @@ async def test_files_and_occupancy_over_http(settings: SHASettings) -> None:
     assert stored.file_id is not None and link.url == "https://signed"
     assert beds.occupancy_rate == 0.5 and pomsf["memberNumber"] == "M1"
     assert b'filename="x.pdf"' in up.calls[0].request.content
+
+
+@respx.mock
+async def test_consent_list_filters_out_other_beneficiaries(settings: SHASettings) -> None:
+    """DHA returns the facility's authorizations regardless of beneficiary_code (observed on UAT)."""
+    root = settings.api_root
+    respx.post(f"{root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
+    mine = load_fixture("authorization_pending.json")
+    other = {
+        **mine,
+        "id": 99,
+        "guid": "other-guid",
+        "token": "OTHERTOKEN",
+        "beneficiaryCode": "CR-SOMEONE-ELSE",
+    }
+    respx.get(f"{root}/claims/authorizations").mock(return_value=httpx.Response(200, json=[other, mine]))
+    async with AsyncSHAClient(settings) as sha:
+        listed = await sha.consent.list("CR0000000000000-0")
+    assert [a.guid for a in listed] == [mine["guid"]]

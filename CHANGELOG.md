@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-09-20
+### Fixed
+- `consent.list(patient)` now filters by beneficiary locally: DHA ignores `beneficiary_code` and returns the whole facility's authorizations (observed on UAT). Without this, clearing a patient's pending authorizations could have rejected another patient's.
+### Added
+- `AuthorizationStatus.AUTHORIZED_PENDING_VISIT` (observed).
+
 ## [0.1.5] — 2026-09-20
 ### Added
 - Facility identification per DHA (`X-Facility-Id` + `X-Facility-Id-Type`): `facility_scope()` context manager,

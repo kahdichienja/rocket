@@ -168,14 +168,17 @@ class HttpConsentGateway:
             raise UnexpectedResponseError(f"AuthorizationWire: {exc}") from exc
 
     async def list(self, beneficiary: PatientId) -> tuple[Authorization, ...]:
+        """Observed on UAT: DHA ignores `beneficiary_code` and returns the whole facility's authorizations,
+        so the filter is applied here. Never trust the server-side filter for anything that mutates."""
         response = await self._transport.send(requests.list_authorizations(beneficiary))
         raise_for_status(response)
         payload = response.json()
         records = payload if isinstance(payload, list) else [payload] if payload else []
         try:
-            return tuple(mappers.to_authorization(AuthorizationWire.model_validate(r)) for r in records)
+            everything = tuple(mappers.to_authorization(AuthorizationWire.model_validate(r)) for r in records)
         except ValidationError as exc:
             raise UnexpectedResponseError(f"AuthorizationWire: {exc}") from exc
+        return tuple(a for a in everything if a.beneficiary == beneficiary)
 
     async def reject(self, token: str) -> None:
         raise_for_status(await self._transport.send(requests.reject_authorization(token)))

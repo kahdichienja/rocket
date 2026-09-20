@@ -107,6 +107,7 @@ class AuthorizationStatus(LenientStrEnum):
 
     PENDING = "PENDING"  # created by /claims/authorize, awaiting biometric verification; blocks the OTP path
     AUTHORIZED = "AUTHORIZED"  # visit opened
+    AUTHORIZED_PENDING_VISIT = "AUTHORIZED_PENDING_VISIT"  # consent verified, visit not yet opened
     SUBMITTED_CLAIM = "SUBMITTED_CLAIM"
     CLOSED = "CLOSED"
 

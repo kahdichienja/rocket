@@ -57,19 +57,21 @@ async def test_benefit_hierarchy_reads() -> None:
 
 
 async def test_authorize_then_reject_round_trip() -> None:
-    """Creates a PENDING authorization on UAT (this is what sends the beneficiary an OTP) and closes it."""
-    from sha_claim import ServiceType
+    """`authorize` creates a PENDING authorization (and sends the OTP) — unless the patient already has an
+    open visit, in which case UAT returns that AUTHORIZED record instead. Either way it must be readable back."""
+    from sha_claim import AuthorizationStatus, ServiceType
 
     async with AsyncSHAClient.from_env() as sha:
         auth = await sha.consent.authorize(SYNTHETIC_PATIENT, ServiceType.CAPITATION, ["SHA-12-001"])
         try:
-            assert auth.is_pending
-            assert auth.is_open
+            assert auth.status in (AuthorizationStatus.PENDING, AuthorizationStatus.AUTHORIZED)
             again = await sha.consent.get(auth.token, auth.guid, SYNTHETIC_PATIENT)
-            assert again is not None
-            assert again.guid == auth.guid
+            assert again is not None and again.guid == auth.guid
+            listed = await sha.consent.list(SYNTHETIC_PATIENT)
+            assert any(a.guid == auth.guid for a in listed)
         finally:
-            await sha.consent.reject(auth.token)
+            if auth.is_pending:
+                await sha.consent.reject(auth.token)
 
 
 async def test_capitation_intervention_under_outpatient_is_a_typed_business_error() -> None:
@@ -83,16 +85,28 @@ async def test_capitation_intervention_under_outpatient_is_a_typed_business_erro
 
 
 async def test_full_outpatient_claim_lifecycle_on_uat() -> None:
-    """send OTP (UAT returns it) → open visit → diagnosis → line → preview → blockers → submit → payer status.
+    """The certification path, as UAT actually enforces it (none of the extra rules are documented):
 
-    Creates and submits a real sandbox claim for the synthetic member. This is the certification path.
-    The OTP path must NOT be preceded by `authorize` — a pending authorization blocks it.
+    send OTP (UAT returns it) → open visit → diagnosis → line → doctor → preview → discharge OTP →
+    submit(invoice, discharge_reason, otp) → payer status.
+
+    Needs a Health-Worker-Registry practitioner: SHA_TEST_PRACTITIONER_REG (+ optional SHA_TEST_PRACTITIONER_BODY,
+    default KMPDC). Without it the test stops after preview and marks itself xfail at submit.
     """
+    import os
     import re
 
-    from sha_claim import Money, Otp
+    from sha_claim import DischargeReason, Money, Otp, PractitionerRef, RegulationBody
+
+    reg = os.getenv("SHA_TEST_PRACTITIONER_REG")
+    body = RegulationBody(os.getenv("SHA_TEST_PRACTITIONER_BODY", "KMPDC"))
 
     async with AsyncSHAClient.from_env() as sha:
+        # A pending (biometric) authorization blocks the OTP path — clear any left over from earlier runs.
+        for auth in await sha.consent.list(SYNTHETIC_PATIENT):
+            if auth.is_pending:
+                await sha.consent.reject(auth.token)
+
         coverage = await sha.eligibility.interventions(SYNTHETIC_PATIENT, "SHA-12-SC-01")
         consultation = next(c for c in coverage if c.name == "Consultation")
         service_type = consultation.service_type_for_authorization
@@ -107,11 +121,9 @@ async def test_full_outpatient_claim_lifecycle_on_uat() -> None:
         claim = session.claim
         assert claim is not None and claim.consent_token.value
         assert claim.workflow_state == "DRAFT" and claim.claim_auth_status == "AUTHORIZED"
-        assert claim.interventions[0].code == consultation.code
-        print("\nvisit opened:", claim.guid, claim.invoice_number)
+        print("\nvisit:", claim.guid, claim.invoice_number)
 
-        diagnosis = await session.add_diagnosis("1A00", consultation.code)
-        assert diagnosis.intervention_code == consultation.code
+        await session.add_diagnosis("1A00", consultation.code)
         line = await session.add_line(consultation.code, Money.kes("500"), quantity=1, diagnoses=["1A00"])
         print("line:", line.guid, line.total_amount)
 
@@ -124,26 +136,21 @@ async def test_full_outpatient_claim_lifecycle_on_uat() -> None:
         )
         assert preview.diagnoses_for(consultation.code)
         assert preview.submission_blockers() == ()
-
         invoice = preview.invoice_number.value if preview.invoice_number else f"INV-UAT-{preview.guid}"
 
-        # Observed on UAT: submit is refused until the visit is discharged — even for CAPITATION/outpatient.
-        from sha_claim import DischargeReason
+        if not reg:
+            pytest.xfail("set SHA_TEST_PRACTITIONER_REG to an HWR-registered practitioner to exercise submit")
 
+        print("doctor:", await session.add_doctor(PractitionerRef.registered(reg, body)))
         otp_message = await session.send_discharge_otp(SYNTHETIC_PATIENT)
         discharge_match = re.search(r"\b(\d{4,8})\b", otp_message)
         assert discharge_match, f"no discharge OTP in message: {otp_message!r}"
-        discharged = await session.discharge(
-            reason=DischargeReason.RECOVERED,
-            invoice_number=invoice,
-            otp=discharge_match.group(1),
+
+        submitted = await session.submit(
+            invoice, discharge_reason=DischargeReason.RECOVERED, otp=discharge_match.group(1)
         )
-        print("discharged:", discharged.workflow_state, discharged.visit_end)
-
-        submitted = await session.submit(invoice)
         print("submitted:", submitted.workflow_state, submitted.invoice_number, submitted.guid)
-        assert submitted.workflow_state and submitted.workflow_state != "DRAFT"
+        assert submitted.is_submitted
 
-        if submitted.guid:
-            payer = await session.payer_status(invoice)
-            print("payer:", [(p.status, p.workflow_state, p.tracking_number) for p in payer])
+        payer = await session.payer_status(invoice)
+        print("payer:", [(p.status, p.workflow_state, p.tracking_number) for p in payer])

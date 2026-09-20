@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 from sha_claim.adapters.wire import requests
 from sha_claim.adapters.wire.transport import TimeoutKind
 from sha_claim.domain.attachments import Attachment
-from sha_claim.domain.claim import Discharge, LineEdit, NewClaimLine, NextOfKin
+from sha_claim.domain.claim import Discharge, LineEdit, NewClaimLine, NextOfKin, Submission
 from sha_claim.domain.codes import DocumentType, Icd11Code, InterventionCode, SchemeCode
 from sha_claim.domain.consent import Otp
 from sha_claim.domain.enums import CancelReason, DischargeReason, NextOfKinIdType
@@ -85,11 +85,20 @@ def test_edit_line_sends_only_changed_fields() -> None:
 def test_preview_is_retry_safe_but_submit_and_close_are_not() -> None:
     assert requests.preview(TOKEN).idempotent
     assert requests.preview(TOKEN).method == "POST"
-    s = requests.submit(TOKEN, InvoiceNumber("INV-1"), None)
+    s = requests.submit(TOKEN, Submission(InvoiceNumber("INV-1")))
     assert not s.idempotent and s.json == {"consent_token": "CR1-ABCDEFGHIJ", "invoice_number": "INV-1"}
-    assert requests.submit(TOKEN, None, "unconscious").json == {
+    assert requests.submit(TOKEN, Submission(reason_for_unknown_patient="unconscious")).json == {
         "consent_token": "CR1-ABCDEFGHIJ",
         "reason_for_unknown_patient": "unconscious",
+    }
+    full = requests.submit(
+        TOKEN, Submission(InvoiceNumber("INV-1"), DischargeReason.RECOVERED, Otp("123456"))
+    ).json
+    assert full == {
+        "consent_token": "CR1-ABCDEFGHIJ",
+        "invoice_number": "INV-1",
+        "discharge_reason": "RECOVERED",
+        "otp": "123456",
     }
     c = requests.close(TOKEN, CancelReason.WRONG_PATIENT, "typo")
     assert not c.idempotent and c.json["cancel_reason_type"] == "WRONG_PATIENT"
@@ -148,3 +157,8 @@ def test_switch_intervention_request() -> None:
         "retain_bill_items": True,
         "bill_from": "2026-09-20T00:00:00+00:00",
     }
+
+
+def test_list_authorizations_request() -> None:
+    r = requests.list_authorizations(PatientId("CR1"))
+    assert r.idempotent and r.params == {"beneficiary_code": "CR1"}

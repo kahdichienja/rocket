@@ -370,10 +370,26 @@ large and NaCare has no POMSF members yet.
 
 ## 7. `sha.consent`
 
+> **Which consent path?** Two exist and they don't mix:
+> - **OTP (usual):** `send_otp` → patient reads the code → `claims.open_visit(..., Otp(code))`. Do **not** call `authorize` first.
+> - **Biometrics (device):** `authorize` → the patient verifies on the biometric device → `open_visit(..., BiometricGuid(auth.guid))`.
+>
+> A `PENDING` authorization left behind by the biometric path **blocks** the OTP path. Use `list` + `reject` to clear it.
+
+### `send_otp(patient, interventions) → str`
+
+`POST /claims/otp` `{patient_id, intervention_codes}`. Sends the visit OTP to the beneficiary's registered
+phone; returns the server message. (On UAT the message contains the OTP itself — sandbox only.)
+
+### `list(patient) → tuple[Authorization, …]`
+
+`GET /claims/authorizations?beneficiary_code=…`. Every authorization the beneficiary has at your facility,
+newest first, with `status` ∈ `PENDING | AUTHORIZED | SUBMITTED_CLAIM | CLOSED`. Undocumented but live.
+
 ### `authorize(patient, service_type, interventions, otp=None) → Authorization`
 
-**Step 1 of every claim.** Creates a *pending* authorization and — this is the important part —
-**sends the OTP to the patient's registered phone.**
+**Biometric path.** Creates a *pending* authorization to be verified on a biometric device. If the patient
+already has an open visit, UAT returns that `AUTHORIZED` record instead.
 
 | Param | Type | Notes |
 |---|---|---|
@@ -521,9 +537,24 @@ else:
     await session.submit("INV-1")
 ```
 
-#### `submit(invoice_number=None, *, reason_for_unknown_patient=None) → VirtualClaim`
-`POST /claims/submit` `{consent_token, [invoice_number], [reason_for_unknown_patient]}`.
+#### `add_doctor(practitioner) → str`
+`POST /claims/doctors`. Attaches the attending practitioner; the registration is checked against the
+Health Worker Registry. **Required before `submit`** (UAT: *"there is no doctor attached to the claim"*).
+
+#### `submit(invoice_number=None, *, discharge_reason=None, otp=None, reason_for_unknown_patient=None) → VirtualClaim`
+`POST /claims/submit` `{consent_token, invoice_number, discharge_reason, otp, [reason_for_unknown_patient]}`.
 **Final.** No changes after this.
+
+What UAT actually requires (none of it documented): a `discharge_reason`, the OTP from
+`send_discharge_otp()` — yes, for outpatient/CAPITATION too — and a doctor on the claim. The server-assigned
+`invoice_number` is on the preview (`preview.invoice_number`). So the real sequence is:
+
+```python
+await session.add_doctor(PractitionerRef.registered("A1234", RegulationBody.KMPDC))
+preview = await session.preview()
+await session.send_discharge_otp(patient)                       # OTP to the patient / next of kin
+claim = await session.submit(preview.invoice_number, discharge_reason=DischargeReason.RECOVERED, otp=code)
+```
 
 The SDK sends submit **exactly once**. If the network drops or the server times out *after* the
 request left, you get `SubmissionOutcomeUnknownError` — the SDK does not guess. Do this:
@@ -551,13 +582,13 @@ Each `PayerClaimRecord`: `guid`, `provider_claim_no`, `tracking_number`, `workfl
 
 ### 9.6 Inpatient: discharge and next of kin
 
-Inpatient claims must be discharged before submit. The discharge needs its own OTP.
+Every claim needs a discharge OTP and reason before submit. **Inpatient** claims additionally call `discharge`; **outpatient / CAPITATION** pass `discharge_reason` + `otp` straight to `submit` (UAT rejects `/claims/discharge` for them).
 
 | Method | Sends | Returns |
 |---|---|---|
 | `add_next_of_kin(*, full_name, id_number, id_type, contact_value)` | `POST /patients/next-of-kin/contacts` — register who receives OTPs when the patient can't | `NextOfKinContact` — `guid`, `is_verified`, `is_confirmed`, `is_main_contact` |
 | `send_discharge_otp(patient)` | `POST /claims/otp/discharge` `{consent_token, patient_id}` | `str` message |
-| `discharge(*, discharge_date, reason, invoice_number, otp)` | `POST /claims/discharge` `{consent_token, discharge_date (ISO), discharge_reason, invoice_number, otp}` | `VirtualClaim` |
+| `discharge(*, reason, invoice_number, otp, discharged_at=None)` | `POST /claims/discharge` — **INPATIENT only** (UAT rejects it for other service types; outpatient/CAPITATION pass the discharge fields to `submit` instead). `discharged_at` defaults to now, must be tz-aware | `VirtualClaim` |
 
 `id_type` is a `NextOfKinIdType`; `reason` a `DischargeReason`; `otp` may be `Otp` or `str`.
 

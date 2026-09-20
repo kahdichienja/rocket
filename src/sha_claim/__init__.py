@@ -24,6 +24,7 @@ from sha_claim.domain.claim import (
     NextOfKin,
     NextOfKinContact,
     PayerClaimRecord,
+    Submission,
     VirtualClaim,
 )
 from sha_claim.domain.codes import (
@@ -41,6 +42,7 @@ from sha_claim.domain.enums import (
     AuthorizationStatus,
     BroughtBy,
     CancelReason,
+    ClaimWorkflowState,
     CoverageStatus,
     DischargeReason,
     DoctorConsentRequestType,
@@ -106,6 +108,7 @@ __all__ = [
     "ClaimIntervention",
     "ClaimLine",
     "ClaimSession",
+    "ClaimWorkflowState",
     "ConfigurationError",
     "ConsentToken",
     "Coverage",
@@ -171,6 +174,7 @@ __all__ = [
     "ServiceType",
     "StoredFile",
     "SubBenefit",
+    "Submission",
     "SubmissionOutcomeUnknownError",
     "Timeouts",
     "TransportError",

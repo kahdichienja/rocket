@@ -55,6 +55,7 @@ from sha_claim.domain.eligibility import Coverage, DateRange, Eligibility, Schem
 from sha_claim.domain.emergency import EmergencyProtocol
 from sha_claim.domain.enums import (
     AuthorizationStatus,
+    ClaimWorkflowState,
     CoverageStatus,
     EligibilityStatus,
     PaymentMechanism,
@@ -143,7 +144,7 @@ def to_virtual_claim(w: VirtualClaimWire) -> VirtualClaim:
         consent_token=ConsentToken(w.authorization_code),
         guid=ClaimGuid(w.id) if w.id.strip() else None,
         claim_id=w.claim_id,
-        workflow_state=w.workflow_state,
+        workflow_state=ClaimWorkflowState(w.workflow_state or "UNKNOWN"),
         claim_auth_status=w.claim_auth_status,
         service_type=_service_type(w.service_type),
         patient_name=w.patient_name,

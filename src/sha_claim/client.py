@@ -148,6 +148,13 @@ class ConsentResource:
         """`GET /claims/authorizations` — re-read an authorization; `None` if the server knows nothing."""
         return await self._gateway.get(token, guid, PatientId.of(patient) if patient else None)
 
+    async def list(self, patient: PatientId | str) -> tuple[Authorization, ...]:
+        """`GET /claims/authorizations?beneficiary_code=…` — every authorization for a beneficiary (undocumented; live on UAT).
+
+        Use it to find a dangling PENDING authorization (which blocks the OTP path) and `reject` it.
+        """
+        return await self._gateway.list(PatientId.of(patient))
+
     async def reject(self, token: str) -> None:
         """`POST /claims/authorizations/{token}/reject` — close a pending authorization."""
         await self._gateway.reject(token)

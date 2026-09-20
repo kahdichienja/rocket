@@ -5,7 +5,7 @@ import pytest
 from sha_claim.domain.claim import VirtualClaim
 from sha_claim.domain.codes import InterventionCode
 from sha_claim.domain.consent import Authorization, ConsentProof, Otp
-from sha_claim.domain.enums import ServiceType
+from sha_claim.domain.enums import ClaimWorkflowState, ServiceType
 from sha_claim.domain.identifiers import ConsentToken, PatientId
 from sha_claim.errors import RequestValidationError
 from sha_claim.use_cases.capture_consent import CaptureConsent
@@ -41,6 +41,9 @@ class FakeConsent:
     async def send_otp(self, patient: PatientId, interventions: Sequence[InterventionCode]) -> str:
         return "sent"
 
+    async def list(self, beneficiary: PatientId) -> tuple[Authorization, ...]:
+        return ()
+
 
 class FakeClaims:
     def __init__(self) -> None:
@@ -55,7 +58,19 @@ class FakeClaims:
     ) -> VirtualClaim:
         self.calls.append((patient, service_type, tuple(interventions), proof))
         return VirtualClaim(
-            ConsentToken("abcdefghij"), None, 1, "OPEN", "", service_type, "", "", "", "", "KES", None, None
+            ConsentToken("abcdefghij"),
+            None,
+            1,
+            ClaimWorkflowState("OPEN"),
+            "",
+            service_type,
+            "",
+            "",
+            "",
+            "",
+            "KES",
+            None,
+            None,
         )
 
 

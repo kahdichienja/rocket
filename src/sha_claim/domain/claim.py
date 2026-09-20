@@ -14,7 +14,13 @@ from typing import Any
 
 from sha_claim.domain.codes import Icd11Code, InterventionCode, SchemeCode
 from sha_claim.domain.consent import Otp
-from sha_claim.domain.enums import DischargeReason, NextOfKinIdType, PaymentMechanism, ServiceType
+from sha_claim.domain.enums import (
+    ClaimWorkflowState,
+    DischargeReason,
+    NextOfKinIdType,
+    PaymentMechanism,
+    ServiceType,
+)
 from sha_claim.domain.identifiers import AttachmentId, ClaimGuid, ConsentToken, InvoiceNumber, LineGuid
 from sha_claim.domain.money import Money
 
@@ -116,8 +122,7 @@ class VirtualClaim:
     consent_token: ConsentToken
     guid: ClaimGuid | None
     claim_id: int | None
-    workflow_state: str
-    """Raw server vocabulary; promoted to a LenientStrEnum once UAT recordings reveal its values."""
+    workflow_state: ClaimWorkflowState
     claim_auth_status: str
     service_type: ServiceType | None
     patient_name: str
@@ -140,6 +145,10 @@ class VirtualClaim:
     is_negative: bool = False
     is_zero: bool = False
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
+
+    @property
+    def is_submitted(self) -> bool:
+        return self.workflow_state == ClaimWorkflowState.SUBMITTED
 
     @property
     def preauth_outstanding(self) -> tuple[ClaimIntervention, ...]:
@@ -284,6 +293,21 @@ class Discharge:
     def __post_init__(self) -> None:
         if self.discharged_at.tzinfo is None:
             raise ValueError("discharged_at must be timezone-aware")
+
+
+@dataclass(frozen=True, slots=True)
+class Submission:
+    """Command for `POST /claims/submit`.
+
+    Observed on UAT (undocumented): submit also needs a discharge OTP (`send_discharge_otp`) and a
+    `discharge_reason`, for every service type — CAPITATION and OUTPATIENT included — and a doctor
+    attached via `add_doctor`. `POST /claims/discharge` itself is INPATIENT-only.
+    """
+
+    invoice_number: InvoiceNumber | None = None
+    discharge_reason: DischargeReason | None = None
+    otp: Otp | None = None
+    reason_for_unknown_patient: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

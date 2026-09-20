@@ -19,6 +19,7 @@ from sha_claim.domain.claim import (
     NextOfKin,
     NextOfKinContact,
     PayerClaimRecord,
+    Submission,
     VirtualClaim,
 )
 from sha_claim.domain.codes import Icd11Code, InterventionCode, ProtocolCode, SchemeCode
@@ -182,12 +183,27 @@ class ClaimSession:
         self,
         invoice_number: InvoiceNumber | str | None = None,
         *,
+        discharge_reason: DischargeReason | None = None,
+        otp: Otp | str | None = None,
         reason_for_unknown_patient: str | None = None,
     ) -> VirtualClaim:
-        """`POST /claims/submit` — final. Attempted once; on ambiguity raises SubmissionOutcomeUnknownError."""
-        invoice = InvoiceNumber.of(invoice_number) if invoice_number is not None else None
-        self.claim = await self._submit.execute(self.consent_token, invoice, reason_for_unknown_patient)
+        """`POST /claims/submit` — final. Attempted once; on ambiguity raises SubmissionOutcomeUnknownError.
+
+        Observed on UAT for every service type: the server also requires `discharge_reason`, the OTP from
+        `send_discharge_otp()`, and a doctor on the claim (`add_doctor`). Pass them here.
+        """
+        submission = Submission(
+            invoice_number=InvoiceNumber.of(invoice_number) if invoice_number is not None else None,
+            discharge_reason=discharge_reason,
+            otp=(otp if isinstance(otp, Otp) else Otp(otp)) if otp is not None else None,
+            reason_for_unknown_patient=reason_for_unknown_patient,
+        )
+        self.claim = await self._submit.execute(self.consent_token, submission)
         return self.claim
+
+    async def add_doctor(self, doctor: PractitionerRef) -> str:
+        """`POST /claims/doctors` — attach the attending practitioner (HWR-registered). Required before `submit`."""
+        return await self._gateway.add_doctor(self.consent_token, doctor)
 
     async def close(self, reason: CancelReason, text: str) -> VirtualClaim:
         """`POST /claims/close` — abandon a claim that will not be submitted."""

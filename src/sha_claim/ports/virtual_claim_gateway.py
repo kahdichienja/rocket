@@ -17,19 +17,14 @@ from sha_claim.domain.claim import (
     NextOfKin,
     NextOfKinContact,
     PayerClaimRecord,
+    Submission,
     VirtualClaim,
 )
 from sha_claim.domain.codes import Icd11Code, InterventionCode
 from sha_claim.domain.consent import ConsentProof
 from sha_claim.domain.enums import CancelReason, ServiceType
-from sha_claim.domain.identifiers import (
-    AttachmentId,
-    ClaimGuid,
-    ConsentToken,
-    InvoiceNumber,
-    LineGuid,
-    PatientId,
-)
+from sha_claim.domain.identifiers import AttachmentId, ClaimGuid, ConsentToken, LineGuid, PatientId
+from sha_claim.domain.practitioner import PractitionerRef
 
 
 class VisitOpener(Protocol):
@@ -47,9 +42,7 @@ class VisitOpener(Protocol):
 class ClaimSubmitter(Protocol):
     """Role interface for the SubmitClaim use case."""
 
-    async def submit(
-        self, token: ConsentToken, invoice: InvoiceNumber | None, reason_for_unknown_patient: str | None
-    ) -> VirtualClaim: ...
+    async def submit(self, token: ConsentToken, submission: Submission) -> VirtualClaim: ...
 
 
 class VirtualClaimGateway(VisitOpener, ClaimSubmitter, Protocol):
@@ -92,6 +85,8 @@ class VirtualClaimGateway(VisitOpener, ClaimSubmitter, Protocol):
     async def remove_attachment(
         self, token: ConsentToken, attachment: AttachmentId, intervention: InterventionCode
     ) -> None: ...
+
+    async def add_doctor(self, token: ConsentToken, doctor: PractitionerRef) -> str: ...
 
     async def preview(self, token: ConsentToken) -> VirtualClaim: ...
 

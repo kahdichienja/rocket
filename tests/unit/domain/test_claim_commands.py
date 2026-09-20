@@ -5,7 +5,7 @@ import pytest
 
 from sha_claim.domain.claim import ClaimIntervention, LineEdit, NewClaimLine, VirtualClaim
 from sha_claim.domain.codes import Icd11Code, InterventionCode
-from sha_claim.domain.enums import PaymentMechanism
+from sha_claim.domain.enums import ClaimWorkflowState, PaymentMechanism
 from sha_claim.domain.identifiers import ConsentToken, LineGuid
 from sha_claim.domain.money import Money
 
@@ -43,7 +43,7 @@ def test_virtual_claim_derived_views() -> None:
         ConsentToken("abcdefghijkl"),
         None,
         1,
-        "DRAFT",
+        ClaimWorkflowState.DRAFT,
         "",
         None,
         "",

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from sha_claim.domain.claim import VirtualClaim
-from sha_claim.domain.identifiers import ConsentToken, InvoiceNumber
+from sha_claim.domain.claim import Submission, VirtualClaim
+from sha_claim.domain.identifiers import ConsentToken
 from sha_claim.errors import SubmissionOutcomeUnknownError, TransportError
 from sha_claim.ports.virtual_claim_gateway import ClaimSubmitter
 
@@ -12,14 +12,9 @@ class SubmitClaim:
     def __init__(self, gateway: ClaimSubmitter) -> None:
         self._gateway = gateway
 
-    async def execute(
-        self,
-        token: ConsentToken,
-        invoice: InvoiceNumber | None = None,
-        reason_for_unknown_patient: str | None = None,
-    ) -> VirtualClaim:
+    async def execute(self, token: ConsentToken, submission: Submission) -> VirtualClaim:
         try:
-            return await self._gateway.submit(token, invoice, reason_for_unknown_patient)
+            return await self._gateway.submit(token, submission)
         except TransportError as exc:
             # The request may or may not have reached the server. Never retry blindly:
             # the caller resolves the ambiguity with `preview` and decides.

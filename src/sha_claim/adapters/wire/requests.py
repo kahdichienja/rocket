@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from sha_claim.adapters.wire.transport import TimeoutKind, WireRequest
 from sha_claim.domain.attachments import Attachment
-from sha_claim.domain.claim import Discharge, LineEdit, NewClaimLine, NextOfKin
+from sha_claim.domain.claim import Discharge, LineEdit, NewClaimLine, NextOfKin, Submission
 from sha_claim.domain.codes import Icd11Code, InterventionCode
 from sha_claim.domain.consent import BiometricGuid, ConsentProof, MatchId, Otp
 from sha_claim.domain.emergency import EmergencyCase, EmtClaim, ProtocolLine
@@ -20,7 +20,6 @@ from sha_claim.domain.identifiers import (
     ConsentToken,
     FacilityCode,
     FileId,
-    InvoiceNumber,
     LineGuid,
     PatientId,
 )
@@ -83,6 +82,11 @@ def get_authorization(token: str, guid: str, beneficiary: PatientId | None) -> W
     if beneficiary is not None:
         params["beneficiary_code"] = beneficiary.value
     return WireRequest("GET", "/claims/authorizations", params=params)
+
+
+def list_authorizations(beneficiary: PatientId) -> WireRequest:
+    """Undocumented but live on UAT: `token`/`guid` may be omitted; the whole history for a beneficiary comes back."""
+    return WireRequest("GET", "/claims/authorizations", params={"beneficiary_code": beneficiary.value})
 
 
 def reject_authorization(token: str) -> WireRequest:
@@ -230,14 +234,16 @@ def preview(token: ConsentToken) -> WireRequest:
     return WireRequest("POST", "/claims/preview", json={"consent_token": token.value}, retry_safe=True)
 
 
-def submit(
-    token: ConsentToken, invoice: InvoiceNumber | None, reason_for_unknown_patient: str | None
-) -> WireRequest:
+def submit(token: ConsentToken, submission: Submission) -> WireRequest:
     body: dict[str, object] = {"consent_token": token.value}
-    if invoice is not None:
-        body["invoice_number"] = invoice.value
-    if reason_for_unknown_patient:
-        body["reason_for_unknown_patient"] = reason_for_unknown_patient
+    if submission.invoice_number is not None:
+        body["invoice_number"] = submission.invoice_number.value
+    if submission.discharge_reason is not None:
+        body["discharge_reason"] = submission.discharge_reason.value  # undocumented; required on UAT
+    if submission.otp is not None:
+        body["otp"] = submission.otp.code  # undocumented; the discharge OTP, required on UAT
+    if submission.reason_for_unknown_patient:
+        body["reason_for_unknown_patient"] = submission.reason_for_unknown_patient
     return WireRequest("POST", "/claims/submit", json=body)
 
 

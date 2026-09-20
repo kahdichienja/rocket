@@ -103,7 +103,19 @@ class EligibilityStatus(LenientStrEnum):
 
 
 class AuthorizationStatus(LenientStrEnum):
-    PENDING = "PENDING"
+    """Observed on UAT 2026-09-20."""
+
+    PENDING = "PENDING"  # created by /claims/authorize, awaiting biometric verification; blocks the OTP path
+    AUTHORIZED = "AUTHORIZED"  # visit opened
+    SUBMITTED_CLAIM = "SUBMITTED_CLAIM"
+    CLOSED = "CLOSED"
+
+
+class ClaimWorkflowState(LenientStrEnum):
+    """`workflow_state` of a virtual claim. Observed on UAT 2026-09-20; extended as more appear."""
+
+    DRAFT = "DRAFT"
+    SUBMITTED = "SUBMITTED"
 
 
 class PaymentMechanism(LenientStrEnum):

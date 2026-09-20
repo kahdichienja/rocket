@@ -22,6 +22,7 @@ from sha_claim.domain.claim import (
     NextOfKin,
     NextOfKinContact,
     PayerClaimRecord,
+    Submission,
     VirtualClaim,
 )
 from sha_claim.domain.codes import DocumentType, Icd11Code, InterventionCode, ProtocolCode, RegulationBody
@@ -30,6 +31,7 @@ from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol, EmtClai
 from sha_claim.domain.enums import (
     BroughtBy,
     CancelReason,
+    ClaimWorkflowState,
     DischargeReason,
     ModeOfArrival,
     NextOfKinIdType,
@@ -68,7 +70,7 @@ def claim(state: str = "DRAFT", guid: str | None = "G") -> VirtualClaim:
         TOKEN,
         ClaimGuid(guid) if guid else None,
         1,
-        state,
+        ClaimWorkflowState(state),
         "",
         ServiceType.CAPITATION,
         "",
@@ -163,14 +165,16 @@ class FakeGateway:
     ) -> None:
         self._rec("remove_attachment", token, attachment, intervention)
 
+    async def add_doctor(self, token: ConsentToken, doctor: PractitionerRef) -> str:
+        self._rec("add_doctor", token, doctor)
+        return "added"
+
     async def preview(self, token: ConsentToken) -> VirtualClaim:
         self._rec("preview", token)
         return claim("PREVIEWED")
 
-    async def submit(
-        self, token: ConsentToken, invoice: InvoiceNumber | None, reason: str | None
-    ) -> VirtualClaim:
-        self._rec("submit", token, invoice, reason)
+    async def submit(self, token: ConsentToken, submission: Submission) -> VirtualClaim:
+        self._rec("submit", token, submission.invoice_number, submission.reason_for_unknown_patient)
         if self.fail_submit:
             raise self.fail_submit
         return claim("SUBMITTED")
@@ -390,7 +394,7 @@ async def test_payer_status_previews_first_when_no_guid() -> None:
 async def test_submit_is_attempted_once_and_ambiguity_is_explicit() -> None:
     gw = FakeGateway(fail_submit=TransportError("timeout", trace_id="t-9"))
     with pytest.raises(SubmissionOutcomeUnknownError) as exc:
-        await SubmitClaim(gw).execute(TOKEN, InvoiceNumber("INV-1"))
+        await SubmitClaim(gw).execute(TOKEN, Submission(InvoiceNumber("INV-1")))
     assert exc.value.trace_id == "t-9"
     assert "preview()" in str(exc.value)
     assert "CR1-TOKEN12345" not in str(exc.value)  # token redacted in the message
@@ -589,3 +593,14 @@ async def test_switch_intervention() -> None:
     assert gw.calls == [
         ("switch", (TOKEN, InterventionCode("SHA-12-001"), InterventionCode("SHA-12-002"), False))
     ]
+
+
+async def test_submit_forwards_discharge_fields_and_add_doctor() -> None:
+    from sha_claim.domain.enums import DischargeReason
+
+    gw = FakeGateway()
+    s = ClaimSession(gateways(claims=gw), TOKEN, claim())
+    await s.add_doctor(PractitionerRef.registered("A1", RegulationBody.KMPDC))
+    await s.submit("INV-1", discharge_reason=DischargeReason.RECOVERED, otp="123456")
+    assert gw.calls[0][0] == "add_doctor"
+    assert gw.calls[1] == ("submit", (TOKEN, InvoiceNumber("INV-1"), None))

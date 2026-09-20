@@ -9,7 +9,7 @@ from sha_claim.domain.claim import (
     VirtualClaim,
 )
 from sha_claim.domain.codes import Icd11Code, InterventionCode
-from sha_claim.domain.enums import PaymentMechanism
+from sha_claim.domain.enums import ClaimWorkflowState, PaymentMechanism
 from sha_claim.domain.identifiers import AttachmentId, ConsentToken, LineGuid
 from sha_claim.domain.money import Money
 
@@ -47,7 +47,7 @@ def claim(**kw) -> VirtualClaim:  # type: ignore[no-untyped-def]
         consent_token=ConsentToken("CR1-TOKEN12345"),
         guid=None,
         claim_id=1,
-        workflow_state="OPEN",
+        workflow_state=ClaimWorkflowState("OPEN"),
         claim_auth_status="",
         service_type=None,
         patient_name="",

@@ -183,6 +183,32 @@ Claim attachments can also be sent inline via `POST /claims/attachments`.
   synthetic patient — an upstream parsing bug, not a request error.
 - `POST /claims/authorizations/{token}/reject` → `200 {"message":"The authorization has been closed."}`.
 
+### Live claim lifecycle, UAT 2026-09-20 (evening) — the rules nobody documented
+
+Run through the SDK against the synthetic member; every step below is verified except the last, which
+needs an HWR-registered practitioner.
+
+1. **The OTP path is `POST /claims/otp` → `POST /claims/visit`.** `/claims/otp` is not on the eclaims portal
+   pages but is live; on UAT its response *contains the OTP* (`"Your OTP is 349835"`). `authorize` is the
+   biometric path only; a **PENDING authorization blocks the OTP path** ("Kindly ensure the biometrics visit
+   has been successfully verified"). `GET /claims/authorizations?beneficiary_code=` (no token/guid) lists a
+   beneficiary's authorizations so a dangling PENDING one can be found and rejected.
+2. `open_visit` for a patient with an open visit **returns that visit** (same guid, same consent token) —
+   effectively idempotent. `authorize` likewise returns the open AUTHORIZED record instead of a new PENDING one.
+3. Real vocabularies: authorization `status` ∈ {PENDING, AUTHORIZED, SUBMITTED_CLAIM, CLOSED}, `label` ∈
+   {UNAUTHORIZED, OTP, SHA}; claim `workflow_state` ∈ {DRAFT, SUBMITTED}; `claim_auth_status` = AUTHORIZED;
+   intervention `workflow_state` = ACTIVE; invoice `workflow_state` = VALID, `dispatch_status` = DISPATCHED.
+   The server assigns `invoice_number` (`INV/13545/75385`) at visit creation.
+4. `null` appears where the docs promise `[]`/`""` (e.g. `required_preauth_document_types: null`).
+5. **`POST /claims/submit` needs, for every service type (CAPITATION included):** `discharge_reason`
+   (undocumented field), `otp` from `POST /claims/otp/discharge` (undocumented field — "Please provide a
+   beneficiary discharge authorization method: OTP or biometrics"), and **a doctor on the claim** via
+   `POST /claims/doctors` ("there is no doctor attached to the claim"). `POST /claims/discharge` itself is
+   **INPATIENT-only** ("only claims of service type INPATIENT … use appropriate route for CAPITATION") and
+   wants an RFC 3339 datetime, not a date.
+6. `POST /claims/doctors` validates the practitioner against the Health Worker Registry (upstream
+   `edi-api.provider-uat.sha.go.ke`); a made-up registration number is rejected.
+
 ## 10. Open questions the portal does not answer
 
 | # | Question | Why it matters |
@@ -190,7 +216,7 @@ Claim attachments can also be sent inline via `POST /claims/attachments`.
 | Q1 | **Closed (UAT 2026-09-20):** two-step. `authorize` without `otp` → PENDING authorization + OTP sent; `visit` verifies. See §9. | — |
 | Q2 | **Closed:** `visit` takes one of `otp`, `auth_guid`, `match_id`. | — |
 | Q3 | **Response side answered** by the portal examples (`spec/examples.json`, 2026-09-20): `invoices[].lines[]`, `claim_diagnoses[]`, `interventions[]`, `preauthItems[]`, `preauthDoctors[].doctorProfile`, payer `results[]` are all modelled now. **Request side still open** for preauth `items/diagnoses/doctors/attachments` (the example shows `[{}]`). Prescription `items[]` and dispense `actual_products[]/doctors[]` *are* published and the SDK's bodies are asserted against them. | preauth request encoding |
-| Q4 | Vocabulary of `workflow_state`, `claim_auth_status`, `resubmission_workflow_state`, authorization `status`, preauth `status`/`doctorReviewStatus`, eligibility `statusCode`. | Status enums; must include `Unknown(raw)` fallback |
+| Q4 | ~~Vocabularies~~ **partly observed** (§9): authorization status/label, claim `DRAFT`/`SUBMITTED`, `claim_auth_status`, invoice states. Preauth `status`/`doctorReviewStatus` and `resubmission_workflow_state` still unobserved. | lenient enums carry unknown values |
 | Q5 | Is `POST /claims/submit` idempotent for the same `consent_token`? What happens on a retried submit after a timeout? | Retry policy for the one call that moves money |
 | Q6 | Production base URL and rate limits. ~~Token TTL~~ observed 3600 s. | Settings + backoff tuning |
 | Q7 | ~~identification_type codes~~ **Answered:** literal strings (`National ID` → `requestIdType: 2`); see §9. Alien/Refugee codes still unobserved. | — |

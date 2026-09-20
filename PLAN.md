@@ -122,13 +122,14 @@ Still open — detailed in [docs/api/WORKFLOWS.md §9](docs/api/WORKFLOWS.md#9-o
 | Q2 | ~~biometric GUID field~~ **closed:** `visit` accepts `otp` \| `auth_guid` \| `match_id` | — |
 | Q3 | ~~Response side~~ answered by the portal examples and modelled (`Invoice`, `PayerClaimRecord`, …). **Request side** for preauth `items/diagnoses/doctors/attachments` is still `[{}]` in the portal; encoded in `requests.create_preauth` with the API's own vocabulary — one function to fix. | first live preauth call |
 | Q4 | Status vocabularies (`workflow_state`, `claim_auth_status`, preauth `status`, …) | enum values (fallback `Unknown` ships regardless) |
-| Q5 | Is `POST /claims/submit` idempotent per `consent_token`? | whether submit may ever be retried |
+| Q5 | Is `POST /claims/submit` idempotent per `consent_token`? (`open_visit` is: it returns the existing open visit.) | whether submit may ever be retried |
 | Q6 | Production base URL, token TTL, rate limits | settings, backoff tuning |
 | Q7 | ~~identification_type codes~~ answered: literal `National ID` etc. (WORKFLOWS §9) | — |
 | Q8 | Encoding of "JSON array" form fields (`diagnoses`, `attachments`, `interventions`) | `multipart.py` |
 | Q9 | Does NaCare need a **sync** client? | whether to ship `SHAClient` (sync) in v1 |
 | Q10 | ~~UAT credentials~~ received 2026-09-20; stored in git-ignored `.env` | — |
-| Q11 | **A UAT beneficiary whose OTP we can receive** (the synthetic member's phone is not ours). Without it, `open_visit` and everything after it can only be contract-tested. | live tests for Phases 3–5 of the claim flow |
+| Q11 | ~~UAT OTP~~ **closed:** `POST /claims/otp` returns the OTP on UAT. Lifecycle live-verified through preview. **New blocker Q12.** | — |
+| Q12 | **An HWR-registered practitioner** (KMPDC/COC/NCK registration number) for `add_doctor` — `submit` refuses claims without one. Set `SHA_TEST_PRACTITIONER_REG` for the live test. | live `submit` + payer status |
 
 Next sources: `https://hie-docs.dha.go.ke/` and the Postman collection `https://documenter.getpostman.com/view/39260559/2sB3dSPoWf`.
 

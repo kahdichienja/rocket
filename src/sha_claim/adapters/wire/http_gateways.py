@@ -56,6 +56,7 @@ from sha_claim.domain.claim import (
     NextOfKin,
     NextOfKinContact,
     PayerClaimRecord,
+    Submission,
     VirtualClaim,
 )
 from sha_claim.domain.codes import Icd11Code, InterventionCode
@@ -70,7 +71,6 @@ from sha_claim.domain.identifiers import (
     ConsentToken,
     FacilityCode,
     FileId,
-    InvoiceNumber,
     LineGuid,
     PatientId,
 )
@@ -167,6 +167,16 @@ class HttpConsentGateway:
         except ValidationError as exc:
             raise UnexpectedResponseError(f"AuthorizationWire: {exc}") from exc
 
+    async def list(self, beneficiary: PatientId) -> tuple[Authorization, ...]:
+        response = await self._transport.send(requests.list_authorizations(beneficiary))
+        raise_for_status(response)
+        payload = response.json()
+        records = payload if isinstance(payload, list) else [payload] if payload else []
+        try:
+            return tuple(mappers.to_authorization(AuthorizationWire.model_validate(r)) for r in records)
+        except ValidationError as exc:
+            raise UnexpectedResponseError(f"AuthorizationWire: {exc}") from exc
+
     async def reject(self, token: str) -> None:
         raise_for_status(await self._transport.send(requests.reject_authorization(token)))
 
@@ -248,10 +258,8 @@ class HttpVirtualClaimGateway:
         response = await self._transport.send(requests.preview(token))
         return mappers.to_virtual_claim(parse_as(VirtualClaimWire, response))
 
-    async def submit(
-        self, token: ConsentToken, invoice: InvoiceNumber | None, reason_for_unknown_patient: str | None
-    ) -> VirtualClaim:
-        response = await self._transport.send(requests.submit(token, invoice, reason_for_unknown_patient))
+    async def submit(self, token: ConsentToken, submission: Submission) -> VirtualClaim:
+        response = await self._transport.send(requests.submit(token, submission))
         return mappers.to_virtual_claim(parse_as(VirtualClaimWire, response))
 
     async def close(self, token: ConsentToken, reason: CancelReason, text: str) -> VirtualClaim:
@@ -263,6 +271,10 @@ class HttpVirtualClaimGateway:
             Page[PayerClaimWire], await self._transport.send(requests.payer_status(claim, provider_claim_no))
         )
         return tuple(mappers.to_payer_record(r) for r in page.results)
+
+    async def add_doctor(self, token: ConsentToken, doctor: PractitionerRef) -> str:
+        response = await self._transport.send(requests.add_emergency_doctor(token, doctor))
+        return parse_as(MessageWire, response).message
 
     async def send_discharge_otp(self, token: ConsentToken, patient: PatientId) -> str:
         response = await self._transport.send(requests.send_discharge_otp(token, patient))

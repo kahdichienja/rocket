@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 ### Added
+- `consent.send_otp()` (`POST /claims/otp`), `consent.list(patient)`, `session.add_doctor()`; `submit()` takes `discharge_reason` + discharge `otp` (all required by UAT, none documented). `discharge()` now takes a tz-aware `discharged_at`.
+- Wire models treat `null` as absent. `ClaimWorkflowState` / `AuthorizationStatus` populated from live observations.
 - `on_event` hook on `AsyncSHAClient`: one `SDKEvent` per HTTP attempt (operation, status, duration, attempt, trace_id, redacted consent token, error). Emit-only.
 - `VirtualClaim.submission_blockers()` — pure pre-submit check over the server's preview snapshot.
 - `.github/workflows/live.yml` — scheduled UAT smoke run.

@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
-## [0.1.0] — 2026-09-20
+## [0.1.2] — 2026-09-20
 
 First public release. 49/49 published eClaims endpoints. Live-verified on DHA UAT through visit → diagnosis → line →
 preview; `submit` verified up to the doctor-attachment rule (needs an HWR-registered practitioner). Pre-auth nested

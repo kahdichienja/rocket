@@ -32,4 +32,4 @@ Use a token scoped to the project after the first upload; never commit it.
 
 ## Consumers
 
-After publishing, NaCare's `requirements.txt` becomes simply `sha-claim==0.1.0`.
+After publishing, NaCare's `requirements.txt` becomes simply `sha-claim==0.1.2`.

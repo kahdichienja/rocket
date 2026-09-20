@@ -552,7 +552,7 @@ What UAT actually requires (none of it documented): a `discharge_reason`, the OT
 ```python
 await session.add_doctor(PractitionerRef.registered("A1234", RegulationBody.KMPDC))
 preview = await session.preview()
-await session.send_discharge_otp(patient)                       # OTP to the patient / next of kin
+await session.send_discharge_otp(patient)  # OTP to the patient / next of kin
 claim = await session.submit(preview.invoice_number, discharge_reason=DischargeReason.RECOVERED, otp=code)
 ```
 

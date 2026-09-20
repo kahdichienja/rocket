@@ -17,7 +17,9 @@ class Icd11Code(Identifier):
     """Diagnosis code as sent in `icd_code`. Normalised to upper case."""
 
     def __post_init__(self) -> None:
-        Identifier.__post_init__(self)  # explicit: zero-arg super() breaks in slots=True dataclasses before Python 3.14
+        Identifier.__post_init__(
+            self
+        )  # explicit: zero-arg super() breaks in slots=True dataclasses before Python 3.14
         code = self.value.upper()
         if not _ICD_PATTERN.match(code):
             raise ValueError(f"{code!r} is not a valid ICD code")
@@ -29,7 +31,9 @@ class InterventionCode(Identifier):
     """SHA benefit-package intervention code (the unit of authorisation, billing and preauth)."""
 
     def __post_init__(self) -> None:
-        Identifier.__post_init__(self)  # explicit: zero-arg super() breaks in slots=True dataclasses before Python 3.14
+        Identifier.__post_init__(
+            self
+        )  # explicit: zero-arg super() breaks in slots=True dataclasses before Python 3.14
         object.__setattr__(self, "value", self.value.upper())
 
 

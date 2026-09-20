@@ -151,7 +151,7 @@ snapshot.lines_for(intervention)  # filtered view
 Mutations are use cases that call the server and return a fresh snapshot. No local state machine
 pretends to know what the server will do.
 
-### 5.3 `ClaimSession` (public API sugar, lives in `client.py`)
+### 5.3 `ClaimSession` (public API sugar, lives in `session.py`)
 Binds a `ConsentToken` to the claim use cases so callers don't thread the token through every call:
 
 ```python
@@ -164,7 +164,9 @@ await session.attach(Attachment.from_path("discharge.pdf", DocumentType.DISCHARG
 preview = await session.preview()
 receipt = await session.submit(invoice_number="INV-2026-000123")
 ```
-`ClaimSession` is a thin coordinator — no business rules — so it needs only a smoke test.
+`ClaimSession` is a thin coordinator: it coerces strings to value objects, translates their `ValueError`s into
+`RequestValidationError`, and delegates. The only orchestration rule it owns ("preview before payer_status if we have no
+GUID") is one line. `sha.claims.resume(token)` re-attaches to a claim whose token NaCare persisted.
 
 ### 5.4 `RequestValidationPolicy`
 Single home for "we can prove the server will reject this": enum membership, ICD-11 pattern,

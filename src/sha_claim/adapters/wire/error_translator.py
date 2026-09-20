@@ -1,4 +1,4 @@
-"""HTTP status + `{error, message, trace_id}` → SDK exceptions."""
+"""HTTP status + `{error, message, trace_id, details}` → SDK exceptions."""
 
 from __future__ import annotations
 
@@ -39,14 +39,15 @@ def raise_for_status(response: WireResponse) -> None:
         return
     env = envelope_of(response)
     trace = env.trace_id or response.request_id
+    detail = env.detail()
     if response.status == 429:
         retry_after = response.headers.get("retry-after")
         raise RateLimitedError(
-            env.message or "rate limited",
+            detail or "rate limited",
             retry_after=float(retry_after) if retry_after and retry_after.isdigit() else None,
             trace_id=trace,
         )
     if response.status >= 500:
-        raise TransportError(f"{response.status} {env.error}: {env.message}", trace_id=trace)
+        raise TransportError(f"{response.status} {env.status_text}: {detail}".strip(), trace_id=trace)
     cls = _BY_STATUS.get(response.status, ServerError)
-    raise cls(env.message, status=response.status, error=env.error, trace_id=trace)
+    raise cls(detail, status=response.status, error=env.status_text, trace_id=trace)

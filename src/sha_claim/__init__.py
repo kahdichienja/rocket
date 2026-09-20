@@ -2,18 +2,39 @@
 
 from sha_claim.client import AsyncSHAClient
 from sha_claim.domain.attachments import Attachment
+from sha_claim.domain.benefits import BenefitPackage, InterventionCoverage, SubBenefit
+from sha_claim.domain.claim import (
+    ClaimAttachment,
+    ClaimDiagnosis,
+    ClaimIntervention,
+    ClaimLine,
+    LineEdit,
+    NewClaimLine,
+    PayerClaimRecord,
+    VirtualClaim,
+)
 from sha_claim.domain.codes import DocumentType, Icd11Code, InterventionCode, RegulationBody, SchemeCode
-from sha_claim.domain.consent import Authorization, BiometricGuid, Otp
+from sha_claim.domain.consent import Authorization, AuthorizedIntervention, BiometricGuid, MatchId, Otp
 from sha_claim.domain.eligibility import Coverage, Eligibility, Scheme
 from sha_claim.domain.enums import (
+    AuthorizationStatus,
     CancelReason,
     CoverageStatus,
     DischargeReason,
     EligibilityStatus,
     IdentificationType,
+    PaymentMechanism,
     ServiceType,
 )
-from sha_claim.domain.identifiers import ClaimGuid, ConsentToken, FacilityCode, InvoiceNumber, PatientId
+from sha_claim.domain.identifiers import (
+    AttachmentId,
+    ClaimGuid,
+    ConsentToken,
+    FacilityCode,
+    InvoiceNumber,
+    LineGuid,
+    PatientId,
+)
 from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.errors import (
@@ -30,6 +51,7 @@ from sha_claim.errors import (
     TransportError,
     UnexpectedResponseError,
 )
+from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
 __version__ = "0.1.0.dev0"
@@ -37,12 +59,21 @@ __version__ = "0.1.0.dev0"
 __all__ = [
     "AsyncSHAClient",
     "Attachment",
+    "AttachmentId",
     "AuthenticationError",
     "Authorization",
+    "AuthorizationStatus",
+    "AuthorizedIntervention",
     "BadRequestError",
+    "BenefitPackage",
     "BiometricGuid",
     "CancelReason",
+    "ClaimAttachment",
+    "ClaimDiagnosis",
     "ClaimGuid",
+    "ClaimIntervention",
+    "ClaimLine",
+    "ClaimSession",
     "ConfigurationError",
     "ConsentToken",
     "Coverage",
@@ -56,11 +87,18 @@ __all__ = [
     "Icd11Code",
     "IdentificationType",
     "InterventionCode",
+    "InterventionCoverage",
     "InvoiceNumber",
+    "LineEdit",
+    "LineGuid",
+    "MatchId",
     "Money",
+    "NewClaimLine",
     "NotFoundError",
     "Otp",
     "PatientId",
+    "PayerClaimRecord",
+    "PaymentMechanism",
     "PermissionDeniedError",
     "PractitionerRef",
     "RateLimitedError",
@@ -72,9 +110,11 @@ __all__ = [
     "SchemeCode",
     "ServerError",
     "ServiceType",
+    "SubBenefit",
     "SubmissionOutcomeUnknownError",
     "Timeouts",
     "TransportError",
     "UnexpectedResponseError",
+    "VirtualClaim",
     "__version__",
 ]

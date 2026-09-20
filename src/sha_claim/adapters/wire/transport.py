@@ -22,13 +22,17 @@ class WireRequest:
     json: Any = None
     form: Mapping[str, str] | None = None
     files: Mapping[str, tuple[str, bytes, str]] | None = None  # name -> (filename, content, content_type)
+    multipart: bool = (
+        False  # force multipart/form-data even when `files` is empty (the API expects it for /claims/lines)
+    )
     timeout: TimeoutKind = TimeoutKind.DEFAULT
     authenticated: bool = True
+    retry_safe: bool = False  # opt a POST into retries (e.g. /claims/preview is a read)
 
     @property
     def idempotent(self) -> bool:
         """Safe to retry blindly. Only reads qualify; POST /claims/preview is opted in by the caller."""
-        return self.method.upper() in {"GET", "HEAD"}
+        return self.retry_safe or self.method.upper() in {"GET", "HEAD"}
 
 
 @dataclass(frozen=True, slots=True)

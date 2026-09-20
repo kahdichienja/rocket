@@ -102,5 +102,15 @@ class EligibilityStatus(LenientStrEnum):
     MEMBER_FOUND = "10"
 
 
+class AuthorizationStatus(LenientStrEnum):
+    PENDING = "PENDING"
+
+
+class PaymentMechanism(LenientStrEnum):
+    CAPITATION = "CAPITATION"
+    CASE_BASED = "CASE BASED"
+    FEE_FOR_SERVICE = "FEE FOR SERVICE"
+
+
 class CoverageStatus(LenientStrEnum):
     COVERED = "1"

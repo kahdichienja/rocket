@@ -1,0 +1,20 @@
+{
+  "count": 2,
+  "next": null,
+  "previous": null,
+  "pageSize": 10000,
+  "currentPage": 1,
+  "totalPages": 1,
+  "startIndex": 1,
+  "endIndex": 2,
+  "results": [
+    {
+      "parentBenefit": "Maternity and Child Health Services",
+      "parentBenefitCode": "SHA-08"
+    },
+    {
+      "parentBenefit": "Outpatient Services",
+      "parentBenefitCode": "SHA-12"
+    }
+  ]
+}

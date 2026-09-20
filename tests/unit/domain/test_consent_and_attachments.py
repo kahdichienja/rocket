@@ -13,8 +13,8 @@ def test_otp_numeric_and_redacted() -> None:
 
 
 def test_biometric_guid_non_empty() -> None:
-    assert BiometricGuid(" g ").guid == "g"
-    with pytest.raises(ValueError):
+    assert BiometricGuid(" g ").value == "g"
+    with pytest.raises(ValueError, match="BiometricGuid"):
         BiometricGuid(" ")
 
 

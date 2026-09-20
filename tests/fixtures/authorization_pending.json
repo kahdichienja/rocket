@@ -1,0 +1,56 @@
+{
+  "id": 74997,
+  "beneficiary": 2499659,
+  "benefitType": "CAPITATION",
+  "provider": 13545,
+  "status": "PENDING",
+  "interventions": [
+    {
+      "name": "Consultation",
+      "code": "SHA-12-001",
+      "id": 877,
+      "needsPreauth": false,
+      "overallTariff": null,
+      "activeForUhc": true,
+      "paymentMechanism": "CAPITATION",
+      "subBenefitCode": "SHA-12-SC-01",
+      "requiresSurgicalPreauth": false,
+      "applicableSchemes": [
+        "UHC"
+      ],
+      "supportedScheme": "UHC",
+      "fund": "PHC Only",
+      "packageCombinations": [
+        "SHA-08",
+        "SHA-07",
+        "SHA-19",
+        "SHA-16",
+        "SHA-09",
+        "SHA-12"
+      ],
+      "interventionCombinations": [],
+      "allowedInterventions": [],
+      "standaloneInterventions": [],
+      "kephLevelTarrif": null,
+      "fallBackKephLevelTariff": null,
+      "preauthFinalised": false,
+      "prescriptionMedication": false,
+      "dispenseMedication": false,
+      "authInterventionId": 87457
+    }
+  ],
+  "authCode": "CR0000000000000-0-TESTTOKEN",
+  "token": "TESTTOKEN0",
+  "guid": "2fee723d-419f-4a1c-882a-247db5ff2f5e",
+  "expiry": "2026-10-20T11:18:29.823407+03:00",
+  "isOpen": true,
+  "label": "UNAUTHORIZED",
+  "providerName": "TEST FACILITY",
+  "providerFid": "FID-47-105963-0",
+  "beneficiaryName": "TEST MEMBER",
+  "beneficiaryNumber": "00000000",
+  "beneficiaryCode": "CR0000000000000-0",
+  "beneficiaryScheme": "Universal Health Coverage",
+  "beneficiaryJoinDate": "2024-10-01T00:00:00",
+  "overallPreauthFinalised": true
+}

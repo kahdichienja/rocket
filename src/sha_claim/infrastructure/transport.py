@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import random
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 import httpx
 
@@ -70,13 +71,14 @@ class HttpxTransport:
         if request.authenticated:
             headers["Authorization"] = f"Bearer {await self._tokens.access_token()}"
         timeout = self._timeout_for(request.timeout)
+        data, files = _encode_body(request)
         raw = await self._http.request(
             request.method,
             f"{self._root}{request.path}",
             params=dict(request.params) or None,
             json=request.json,
-            data=dict(request.form) if request.form else None,
-            files=dict(request.files) if request.files else None,
+            data=data,
+            files=files,
             headers=headers,
             timeout=timeout,
         )
@@ -94,3 +96,14 @@ class HttpxTransport:
         return httpx.Timeout(
             connect=self._timeouts.connect, read=read, write=read, pool=self._timeouts.connect
         )
+
+
+def _encode_body(request: WireRequest) -> tuple[dict[str, str] | None, dict[str, Any] | None]:
+    """Plain form → urlencoded; multipart → every field as a part (filename-less parts for scalars)."""
+    form = dict(request.form or {})
+    files: dict[str, Any] = dict(request.files or {})
+    if not (request.multipart or files):
+        return (form or None), None
+    parts: dict[str, Any] = {k: (None, v) for k, v in form.items()}
+    parts.update(files)
+    return None, parts

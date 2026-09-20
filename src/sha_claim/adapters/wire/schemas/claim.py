@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import Field
+
+from sha_claim.adapters.wire.schemas.common import WireModel
+
+Number = float | int | str | None
+
+
+class MessageWire(WireModel):
+    """`{data, message}` acknowledgement returned by retire/restore/remove operations."""
+
+    message: str = ""
+    data: Any = None
+
+
+class ClaimInterventionWire(WireModel):
+    id: str = ""
+    intervention_code: str = ""
+    intervention_name: str = ""
+    intervention_payment_mechanism: str = ""
+    intervention_overall_tariff: Number = None
+    intervention_fund: str = ""
+    sub_benefit_code: str = ""
+    needs_preauth: bool = False
+    preauth_exist: bool = False
+    workflow_state: str = ""
+    applicable_document_types: list[str] = Field(default_factory=list)
+    required_preauth_document_types: list[str] = Field(default_factory=list)
+    bill_from: str = ""
+    bill_to: str = ""
+
+
+class ClaimDiagnosisWire(WireModel):
+    claim_diagnosis_id: int | None = None
+    diagnosis_code: str = ""
+    diagnosis_name: str = ""
+    intervention_code: str = ""
+    is_flagged_diagnosis: bool = False
+    recorded_on: str = ""
+
+
+class ClaimLineWire(WireModel):
+    id: str = ""
+    intervention_code: str = ""
+    item_code: str = ""
+    item_name: str = ""
+    quantity: Number = None
+    unit_price: Number = None
+    line_total_amount: Number = None
+    line_net_amount: Number = None
+    line_copay: Number = None
+    scheme_code: str = ""
+    charge_date: str = ""
+    is_active: bool = True
+    doctor_name: str = ""
+
+
+class ClaimAttachmentWire(WireModel):
+    id: str = ""
+    title: str = ""
+    attachment_type: str = ""
+    intervention_code: str = ""
+    description: str = ""
+
+
+class VirtualClaimWire(WireModel):
+    """Response of /claims/visit, /claims/preview, /claims/submit, /claims/close (snake_case on the wire)."""
+
+    id: str = ""
+    claim_id: int | None = None
+    authorization_code: str = ""
+    authorization_guid: str = ""
+    workflow_state: str = ""
+    claim_auth_status: str = ""
+    service_type: str = ""
+    patient_name: str = ""
+    member_number: str = ""
+    payer_name: str = ""
+    scheme_name: str = ""
+    currency: str = "KES"
+    total_claim_amount: Number = None
+    total_claim_net_amount: Number = None
+    total_claim_copay: Number = None
+    total_claim_discount: Number = None
+    invoice_number: str = ""
+    visit_number: str = ""
+    visit_start: str = ""
+    visit_end: str = ""
+    is_negative: bool = False
+    is_zero: bool = False
+    interventions: list[ClaimInterventionWire] = Field(default_factory=list)
+    claim_diagnoses: list[ClaimDiagnosisWire] = Field(default_factory=list)
+    claim_attachments: list[ClaimAttachmentWire] = Field(default_factory=list)

@@ -3,9 +3,10 @@
 Python SDK for **Social Health Authority (SHA, Kenya)** claims through the Digital Health Agency's
 **AfyaConnect HIE eClaims API**. Async-first, typed, framework-free.
 
-> Status: pre-release (`0.1.0.dev0`). Eligibility is implemented end-to-end against the DHA UAT
-> environment; consent, virtual claims, billing, submission and pre-authorisation are in progress.
-> See [PLAN.md](PLAN.md).
+> Status: pre-release (`0.1.0.dev0`). 24 of 49 endpoints implemented. Eligibility, benefits and consent are
+> verified live against DHA UAT; the claim lifecycle (`ClaimSession`) is contract-tested against the published
+> spec and awaits a UAT beneficiary with a reachable phone for live verification. Pre-authorisation, emergency
+> and ePrescriptions are not implemented yet. See [PLAN.md](PLAN.md).
 
 ## Install
 
@@ -43,6 +44,38 @@ async def main() -> None:
 
 
 asyncio.run(main())
+```
+
+### A claim, end to end
+
+```python
+from sha_claim import AsyncSHAClient, Money, Otp, ServiceType, DocumentType, Attachment, SubmissionOutcomeUnknownError
+
+async with AsyncSHAClient.from_env() as sha:
+    patient = (await sha.eligibility.check("12345678", IdentificationType.NATIONAL_ID)).patient_id
+    coverage = await sha.eligibility.interventions(patient, "SHA-12-SC-01")
+    consultation = next(c for c in coverage if c.name == "Consultation")
+
+    # 1. consent: this sends the OTP to the beneficiary's registered phone
+    auth = await sha.consent.authorize(patient, consultation.service_type_for_authorization, [consultation.code])
+
+    # 2. open the server-side virtual claim with the OTP the patient read out
+    session = await sha.claims.open_visit(patient, consultation.service_type_for_authorization, [consultation.code], Otp("123456"))
+
+    # 3. build it — every call is keyed by the session's consent_token
+    await session.add_diagnosis("1A00", consultation.code)
+    await session.add_line(consultation.code, Money.kes("1500"), quantity=1, diagnoses=["1A00"])
+    await session.attach(Attachment.from_path("invoice.pdf", DocumentType.INVOICE), consultation.code)
+
+    # 4. verify, then submit exactly once
+    preview = await session.preview()
+    try:
+        claim = await session.submit(invoice_number="INV-2026-000123")
+    except SubmissionOutcomeUnknownError:
+        claim = await session.preview()          # the server knows whether it went through; ask it
+
+    # later, from any process that persisted the token:
+    status = await sha.claims.resume(claim.consent_token).payer_status("INV-2026-000123")
 ```
 
 Every error is a subclass of `sha_claim.SHAClaimError`; see `sha_claim.errors`.

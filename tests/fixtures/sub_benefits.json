@@ -1,0 +1,37 @@
+{
+  "count": 3,
+  "pageSize": 10000,
+  "currentPage": 1,
+  "totalPages": 1,
+  "startIndex": 1,
+  "endIndex": 3,
+  "results": [
+    {
+      "id": 10,
+      "code": "SHA-08-SC-02",
+      "name": "Maternity, Neonatal and Child health services",
+      "accessPoint": "OP and IP",
+      "fund": "",
+      "parentBenefit": "Maternity and Child Health Services",
+      "parentBenefitCode": "SHA-08"
+    },
+    {
+      "id": 3,
+      "code": "SHA-12-SC-01",
+      "name": "Outpatient Care",
+      "accessPoint": "OP",
+      "fund": "",
+      "parentBenefit": "Outpatient Services",
+      "parentBenefitCode": "SHA-12"
+    },
+    {
+      "id": 1,
+      "code": "SHA-12-SC-03",
+      "name": "Outpatient: MCH",
+      "accessPoint": "OP",
+      "fund": "",
+      "parentBenefit": "Outpatient Services",
+      "parentBenefitCode": "SHA-12"
+    }
+  ]
+}

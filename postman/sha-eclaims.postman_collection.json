@@ -1,0 +1,1839 @@
+{
+  "info": {
+    "name": "SHA eClaims (AfyaConnect HIE) \u2014 UAT",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Generated from the DHA developer portal spec captured 2026-09-20 (sha_claim/docs/api/spec). Run '0 \u00b7 Authentication' first; the token is stored in the environment and auto-refreshed by the collection pre-request script when it expires."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-refresh the token when missing or expired (skip for the token request itself).",
+          "if (pm.request.url.getPath().endsWith('/tenants/token')) return;",
+          "const exp = Number(pm.environment.get('token_expires_at') || 0);",
+          "if (pm.environment.get('access_token') && Date.now() < exp) return;",
+          "pm.sendRequest({",
+          "  url: pm.environment.get('base_url') + '/api/v1/tenants/token', method: 'POST',",
+          "  header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+          "  body: { mode: 'urlencoded', urlencoded: [",
+          "    { key: 'client_id', value: pm.environment.get('client_id') },",
+          "    { key: 'client_secret', value: pm.environment.get('client_secret') } ] }",
+          "}, (err, res) => {",
+          "  if (err || res.code !== 200) { console.error('token refresh failed', err || res.code); return; }",
+          "  const b = res.json();",
+          "  pm.environment.set('access_token', b.access_token);",
+          "  pm.environment.set('token_expires_at', Date.now() + (b.expires_in - 60) * 1000);",
+          "});"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "0 \u00b7 Authentication",
+      "item": [
+        {
+          "name": "POST /api/v1/tenants/token \u2014 Get access token (run first)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('token issued', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.environment.set('access_token', body.access_token);",
+                  "pm.environment.set('token_expires_at', Date.now() + (body.expires_in - 60) * 1000);",
+                  "console.log('access_token stored; expires_in', body.expires_in);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tenants/token",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "tenants",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "client_id",
+                  "value": "{{client_id}}"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{client_secret}}"
+                }
+              ]
+            },
+            "description": "OAuth2 client credentials. The test script stores access_token in the environment; every other request inherits it as a Bearer token."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Eligibility",
+      "description": "Endpoints for checking beneficiary eligibility.",
+      "item": [
+        {
+          "name": "GET /api/v1/patients/benefits \u2014 Benefits Coverage",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/benefits?patient_id=<patient_id>",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients",
+                "benefits"
+              ],
+              "query": [
+                {
+                  "key": "patient_id",
+                  "value": "CR7678914660684-5",
+                  "description": "(required) Patient's client registry ID",
+                  "disabled": false
+                },
+                {
+                  "key": "fields",
+                  "value": "<fields>",
+                  "description": "(optional) Fields to include in response (e.g parent_benefit,parent_benefit_code)",
+                  "disabled": true
+                },
+                {
+                  "key": "is_unique_benefit",
+                  "value": "False",
+                  "description": "(optional) Filter unique benefits only",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieve the list of benefit packages available for a specific patient.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#benefits-coverage"
+          }
+        },
+        {
+          "name": "GET /api/v1/patients/benefits/interventions \u2014 Interventions Coverage",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/benefits/interventions?patient_id=<patient_id>&sub_benefit_code=<sub_benefit_code>",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients",
+                "benefits",
+                "interventions"
+              ],
+              "query": [
+                {
+                  "key": "patient_id",
+                  "value": "CR7678914660684-5",
+                  "description": "(required) Patient's client registry ID",
+                  "disabled": false
+                },
+                {
+                  "key": "sub_benefit_code",
+                  "value": "SHA-12-SC-01",
+                  "description": "(required) Sub benefit whose interventions are to be returned",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Retrieve the list of medical interventions available under benefit packages for a patient.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#interventions-coverage"
+          }
+        },
+        {
+          "name": "GET /api/v1/patients/eligibility \u2014 SHA Eligibility Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/eligibility?identification_number=<identification_number>&identification_type=<identification_type>",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients",
+                "eligibility"
+              ],
+              "query": [
+                {
+                  "key": "identification_number",
+                  "value": "00000000",
+                  "description": "(required) Patient identification number",
+                  "disabled": false
+                },
+                {
+                  "key": "identification_type",
+                  "value": "National ID",
+                  "description": "(required) Patient identification type",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "This endpoint checks the eligibility of a beneficiary for certain healthcare services.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#sha-eligibility-check"
+          }
+        },
+        {
+          "name": "GET /api/v1/patients/benefits/utilization \u2014 Get patient payer utilization balances",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/benefits/utilization?patient_id=<patient_id>&intervention_code=<intervention_code>",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients",
+                "benefits",
+                "utilization"
+              ],
+              "query": [
+                {
+                  "key": "patient_id",
+                  "value": "CR7678914660684-5",
+                  "description": "(required) Patient's CR number",
+                  "disabled": false
+                },
+                {
+                  "key": "intervention_code",
+                  "value": "<intervention_code>",
+                  "description": "(required) Intervention code",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Retrieves a patient's payer utilization balances showing benefit usage and remaining limits\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#get-patient-payer-utilization-balances"
+          }
+        },
+        {
+          "name": "GET /api/v1/patients/sub-benefits \u2014 Get patient benefits coverage",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/sub-benefits?patient_id=<patient_id>",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients",
+                "sub-benefits"
+              ],
+              "query": [
+                {
+                  "key": "patient_id",
+                  "value": "CR7678914660684-5",
+                  "description": "(required) Patient's client registry ID",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Retrieves a patient's SHA benefits coverage\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#get-patient-benefits-coverage"
+          }
+        },
+        {
+          "name": "GET /api/v1/facilities/{facilityCode}/beds/occupancy \u2014 Get facility bed occupancy",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/facilities/:facilityCode/beds/occupancy",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "facilities",
+                ":facilityCode",
+                "beds",
+                "occupancy"
+              ],
+              "variable": [
+                {
+                  "key": "facilityCode",
+                  "value": "<facilityCode>"
+                }
+              ]
+            },
+            "description": "Returns total capacity and current bed occupancy data for the facility.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#get-facility-bed-occupancy\n\nNOTE: spec says no auth, but UAT returns 401 without a bearer \u2014 auth is inherited from the collection anyway."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authorizations",
+      "description": "Endpoint for creating authorizations using biometrics or OTP.",
+      "item": [
+        {
+          "name": "GET /api/v1/claims/authorizations \u2014 Retrieve an existing authorization",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/authorizations?token=<token>&guid=<guid>",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "authorizations"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "<token>",
+                  "description": "(required) Authorization token linked to the patient's consent.",
+                  "disabled": false
+                },
+                {
+                  "key": "beneficiary_code",
+                  "value": "<beneficiary_code>",
+                  "description": "(optional) The beneficiary's identifier code.",
+                  "disabled": true
+                },
+                {
+                  "key": "guid",
+                  "value": "<guid>",
+                  "description": "(required) Unique identifier (GUID) of the authorization record.",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Retrieves an existing authorization for a patient using the provided token, beneficiary code, and GUID.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#retrieve-an-existing-authorization"
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/authorize \u2014 Create a new authorization (OTP or biometrics)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/authorize",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "authorize"
+              ]
+            },
+            "description": "Creates a new authorization by capturing patient consent via OTP or biometrics. Use the OTP strategy for standard outpatient and inpatient consent; use the biometrics strategy (eKYC or fingerprint) when the facility has a registered hardware agent. The same endpoint is used across claims creation and consent workflows.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#create-a-new-authorization-otp-or-biometrics\n\nUAT (2026-09-20): omit `otp` to create a PENDING authorization \u2014 this is what sends the OTP. CAPITATION interventions (e.g. SHA-12-001 Consultation) must use service_type=CAPITATION, not OUTPATIENT.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"CR7678914660684-5\",\n  \"service_type\": \"CAPITATION\",\n  \"interventions\": [\n    \"SHA-12-001\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/authorizations/{consent_token}/reject \u2014 Rejects existing pending biometrics authorization.",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/authorizations/:consent_token/reject",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "authorizations",
+                ":consent_token",
+                "reject"
+              ],
+              "variable": [
+                {
+                  "key": "consent_token",
+                  "value": "<consent_token>"
+                }
+              ]
+            },
+            "description": "Rejects existing pending biometrics authorization.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#rejects-existing-pending-biometrics-authorization"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Start Visit Consent",
+      "description": "Endpoints for managing visit consent and OTP verification.",
+      "item": [
+        {
+          "name": "POST /api/v1/claims/visit \u2014 Create new virtual claim",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/visit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "visit"
+              ]
+            },
+            "description": "Creates a new virtual claim for a beneficiary after verifying their consent. Use the OTP strategy when consent was captured via a one-time password, or the biometrics strategy when consent was captured via eKYC or fingerprint \u2014 in which case the authorization GUID from POST /api/v1/claims/authorize is passed instead of an OTP.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#create-new-virtual-claim",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"CR7678914660684-5\",\n  \"service_type\": \"CAPITATION\",\n  \"intervention_codes\": [\n    \"SHA-12-001\"\n  ],\n  \"otp\": \"<otp>\",\n  \"//alt\": \"use auth_guid or match_id instead of otp for biometrics\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Interventions",
+      "description": "Endpoints for managing interventions and their combinations.",
+      "item": [
+        {
+          "name": "POST /api/v1/claims/interventions \u2014 Add a new intervention to claim",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/interventions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "interventions"
+              ]
+            },
+            "description": "Adds a new intervention to an existing claim using the consent token from claim creation.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#add-a-new-intervention-to-claim",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"facilityID\": \"<facilityID>\",\n  \"facilityIDType\": \"<facilityIDType>\",\n  \"intervention_code\": \"<intervention_code>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/interventions/restore \u2014 Restore Intervention",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/interventions/restore",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "interventions",
+                "restore"
+              ]
+            },
+            "description": "Restore an intervention to a claim.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#restore-intervention",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"intervention_code\": \"<intervention_code>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/interventions/retire \u2014 Retire Intervention",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/interventions/retire",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "interventions",
+                "retire"
+              ]
+            },
+            "description": "Retire an intervention from a claim.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#retire-intervention",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"intervention_code\": \"<intervention_code>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/interventions/switch \u2014 Switch intervention",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/interventions/switch",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "interventions",
+                "switch"
+              ]
+            },
+            "description": "Switches an existing intervention to a new intervention using a valid consent token.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#switch-intervention",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bill_from\": \"<bill_from>\",\n  \"bill_to\": \"<bill_to>\",\n  \"consent_token\": \"<consent_token>\",\n  \"existing_intervention_code\": \"<existing_intervention_code>\",\n  \"new_intervention_code\": \"<new_intervention_code>\",\n  \"retain_bill_items\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Preauths",
+      "description": "Endpoints for preauthorization processes.",
+      "item": [
+        {
+          "name": "GET /api/v1/preauths \u2014 Fetches a preauthorization",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/preauths?consent_token=<consent_token>",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "preauths"
+              ],
+              "query": [
+                {
+                  "key": "consent_token",
+                  "value": "<consent_token>",
+                  "description": "(required) consent token linked to the preauth",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Fetches an existing preauthorization linked to the consent token provided\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#fetches-a-preauthorization"
+          }
+        },
+        {
+          "name": "POST /api/v1/preauths \u2014 Create a preauthorization",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/preauths",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "preauths"
+              ]
+            },
+            "description": "Creates a new preauthorization using multipart form data with file uploads\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#create-a-preauthorization",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "consent_token",
+                  "type": "text",
+                  "description": "(required) Consent token for authorization. This is the `authorization_code` received from the `Create Virtual Claim` endpoint.",
+                  "value": "<consent_token>"
+                },
+                {
+                  "key": "intervention_code",
+                  "type": "text",
+                  "description": "(required) Intervention code for the service offered",
+                  "value": "<intervention_code>"
+                },
+                {
+                  "key": "service_start",
+                  "type": "text",
+                  "description": "(required) ISO timestamp for when the service started",
+                  "value": "<service_start>"
+                },
+                {
+                  "key": "service_end",
+                  "type": "text",
+                  "description": "(required) ISO timestamp for when the service ended",
+                  "value": "<service_end>"
+                },
+                {
+                  "key": "items",
+                  "type": "text",
+                  "description": "(required) List of billed items",
+                  "value": "[]"
+                },
+                {
+                  "key": "diagnoses",
+                  "type": "text",
+                  "description": "(required) List of diagnoses",
+                  "value": "[]"
+                },
+                {
+                  "key": "doctors",
+                  "type": "text",
+                  "description": "(required) List of doctors",
+                  "value": "[]"
+                },
+                {
+                  "key": "attachments",
+                  "type": "text",
+                  "description": "(required) List of attachments",
+                  "value": "[]"
+                },
+                {
+                  "key": "provider_notification_email",
+                  "type": "text",
+                  "description": "(required) Email to notify the provider of any updates on the preauthorization request",
+                  "value": "<provider_notification_email>"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/preauths/diagnoses/{icd_code} \u2014 Remove diagnosis from a preauth",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/preauths/diagnoses/:icd_code",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "preauths",
+                "diagnoses",
+                ":icd_code"
+              ],
+              "variable": [
+                {
+                  "key": "icd_code",
+                  "value": "<icd_code>"
+                }
+              ]
+            },
+            "description": "Remove a diagnosis from an existing preauthorization.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#remove-diagnosis-from-a-preauth",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"icd_code\": \"<icd_code>\",\n  \"intervention_code\": \"<intervention_code>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/preauths/doctors \u2014 Remove Preauth Doctor",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/preauths/doctors",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "preauths",
+                "doctors"
+              ]
+            },
+            "description": "Remove a doctor associated with an existing preauthorization. Can only be done before the preauthorization is submitted.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#remove-preauth-doctor",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"intervention_code\": \"<intervention_code>\",\n  \"practitioner_registration_number\": \"<practitioner_registration_number>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/preauths/cancel \u2014 Cancel Preauth",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/preauths/cancel",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "preauths",
+                "cancel"
+              ]
+            },
+            "description": "Cancel an existing preauthorization using the consent token and intervention code.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#cancel-preauth",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"intervention_code\": \"<intervention_code>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Billing",
+      "description": "Endpoints for billing and invoice management.",
+      "item": [
+        {
+          "name": "POST /api/v1/claims/attachments \u2014 Add virtual Claim Attachment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/attachments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "attachments"
+              ]
+            },
+            "description": "This endpoint allows addition of an attachment associated with a claim\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#add-virtual-claim-attachment",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "consent_token",
+                  "type": "text",
+                  "description": "(required) Consent token",
+                  "value": "<consent_token>"
+                },
+                {
+                  "key": "file_blob",
+                  "type": "file",
+                  "description": "(required) Attachment file",
+                  "src": ""
+                },
+                {
+                  "key": "document_type",
+                  "type": "text",
+                  "description": "(required) Document type",
+                  "value": "BIO_DETAILS"
+                },
+                {
+                  "key": "intervention_code",
+                  "type": "text",
+                  "description": "(required) Intervention code",
+                  "value": "<intervention_code>"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/v1/claims/attachments \u2014 Remove Virtual Claim Attachment",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/attachments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "attachments"
+              ]
+            },
+            "description": "Removes a specific attachment from a virtual claim.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#remove-virtual-claim-attachment",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"attachment_id\": \"<attachment_id>\",\n  \"consent_token\": \"<consent_token>\",\n  \"intervention_code\": \"<intervention_code>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/diagnoses \u2014 Add a diagnosis to an existing virtual claim.",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/diagnoses",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "diagnoses"
+              ]
+            },
+            "description": "Links a diagnosis to a specific intervention within a virtual claim. Uses ICD codes to capture the patient\u2019s condition for billing and reporting purposes.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#add-a-diagnosis-to-an-existing-virtual-claim",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"facilityID\": \"<facilityID>\",\n  \"facilityIDType\": \"<facilityIDType>\",\n  \"icd_code\": \"<icd_code>\",\n  \"intervention_code\": \"<intervention_code>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/v1/claims/diagnoses \u2014 Remove Virtual Claim Diagnosis",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/diagnoses",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "diagnoses"
+              ]
+            },
+            "description": "Removes a diagnosis linked to a virtual claim for a specific beneficiary.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#remove-virtual-claim-diagnosis",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"icd_code\": \"<icd_code>\",\n  \"intervention_code\": \"<intervention_code>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/lines \u2014 Add billing line item to virtual claim.",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/lines",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "lines"
+              ]
+            },
+            "description": "Adds a line item to an existing virtual claim\u2019s invoice. Requires intervention details, pricing, and quantity to record the service or item billed.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#add-billing-line-item-to-virtual-claim",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "consent_token",
+                  "type": "text",
+                  "description": "(required) Consent token",
+                  "value": "<consent_token>"
+                },
+                {
+                  "key": "intervention_code",
+                  "type": "text",
+                  "description": "(required) Intervention code",
+                  "value": "<intervention_code>"
+                },
+                {
+                  "key": "unit_price",
+                  "type": "text",
+                  "description": "(required) Unit price",
+                  "value": "100.0"
+                },
+                {
+                  "key": "quantity",
+                  "type": "text",
+                  "description": "(required) Quantity",
+                  "value": "100.0"
+                },
+                {
+                  "key": "scheme_code",
+                  "type": "text",
+                  "description": "(optional) Scheme code",
+                  "value": "<scheme_code>",
+                  "disabled": true
+                },
+                {
+                  "key": "charge_date",
+                  "type": "text",
+                  "description": "(optional) Charge date",
+                  "value": "<charge_date>",
+                  "disabled": true
+                },
+                {
+                  "key": "diagnoses",
+                  "type": "text",
+                  "description": "(optional) JSON array of ICD diagnosis codes",
+                  "value": "<diagnoses>",
+                  "disabled": true
+                },
+                {
+                  "key": "attachments",
+                  "type": "text",
+                  "description": "(optional) Attachments metadata as JSON",
+                  "value": "<attachments>",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/v1/claims/lines \u2014 Remove Virtual Claim Line",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/lines",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "lines"
+              ]
+            },
+            "description": "Removes a specific claim line from a virtual claim using its GUID.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#remove-virtual-claim-line",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"line_guid\": \"<line_guid>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PATCH /api/v1/claims/lines/edit \u2014 Edit Virtual Claim Line",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/lines/edit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "lines",
+                "edit"
+              ]
+            },
+            "description": "Edit a virtual claim line item before resubmitting the invoice. This endpoint allows modification of  unit price and quantity of a specific line item in a virtual claim after payer review.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#edit-virtual-claim-line",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"line_id\": \"<line_id>\",\n  \"quantity\": 1,\n  \"scheme_code\": \"<scheme_code>\",\n  \"unit_price\": \"<unit_price>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/lines/resubmit \u2014 Resubmit a claim line",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/lines/resubmit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "lines",
+                "resubmit"
+              ]
+            },
+            "description": "Resubmit a previously failed or rejected claim line for processing\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#resubmit-a-claim-line",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/preview \u2014 Preview Claim",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/preview",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "preview"
+              ]
+            },
+            "description": "Previews a claim using the provided consent token before final submission. This allows the provider to verify claim details.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#preview-claim",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/claims/preview/payer \u2014 Preview Payer Claim",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/preview/payer?guid=<guid>&provider_claim_no=<provider_claim_no>",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "preview",
+                "payer"
+              ],
+              "query": [
+                {
+                  "key": "guid",
+                  "value": "<guid>",
+                  "description": "(required) Claim GUID",
+                  "disabled": false
+                },
+                {
+                  "key": "provider_claim_no",
+                  "value": "<provider_claim_no>",
+                  "description": "(required) Provider claim number",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "This endpoint allows the user to preview the claim that has been sennt to the payer. It provides a way to check the claim status as seen from payer.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#preview-payer-claim"
+          }
+        },
+        {
+          "name": "GET /api/v1/patients/pomsf-balances \u2014 Get POMSF balances for a patient",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/pomsf-balances?patient_id=<patient_id>&policy_year=<policy_year>",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients",
+                "pomsf-balances"
+              ],
+              "query": [
+                {
+                  "key": "patient_id",
+                  "value": "CR7678914660684-5",
+                  "description": "(required) Patient's POMSF member number (CR number)",
+                  "disabled": false
+                },
+                {
+                  "key": "policy_year",
+                  "value": "<policy_year>",
+                  "description": "(required) The policy year for which you want to fetch the balances",
+                  "disabled": false
+                },
+                {
+                  "key": "principal_member_number",
+                  "value": "<principal_member_number>",
+                  "description": "(optional) Patient principal POMSF member number (CR number)",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Retrieves Public Officers Medical Scheme Fund balances for a civil servant patient\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#get-pomsf-balances-for-a-patient"
+          }
+        },
+        {
+          "name": "POST /api/v1/uploads \u2014 Upload a file",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/uploads",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "uploads"
+              ]
+            },
+            "description": "Uploads a file and returns its storage path\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#upload-a-file",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "description": "(required) File to upload",
+                  "src": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/uploads/{file_id} \u2014 Get file download URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/uploads/:file_id",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "uploads",
+                ":file_id"
+              ],
+              "variable": [
+                {
+                  "key": "file_id",
+                  "value": "<file_id>"
+                }
+              ]
+            },
+            "description": "Generates a pre-signed download URL for a previously uploaded file.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#get-file-download-url"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Preauth Doctor Consent",
+      "description": "Endpoints for doctor consent in preauthorization.",
+      "item": [
+        {
+          "name": "POST /api/v1/claims/doctor-consent \u2014 Request Doctor Consent",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/doctor-consent",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "doctor-consent"
+              ]
+            },
+            "description": "Sends a request for a doctor's consent related to a preauthorization.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#request-doctor-consent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"created\": \"<created>\",\n  \"emergency_claim_id\": \"<emergency_claim_id>\",\n  \"identification_number\": \"<identification_number>\",\n  \"identification_type\": \"registration_number\",\n  \"intervention_code\": \"<intervention_code>\",\n  \"practitioner_registration_number\": \"<practitioner_registration_number>\",\n  \"regulation_body\": \"KMPDC\",\n  \"request_type\": \"PREAUTH_DOCTOR_APPROVAL_REQUEST\",\n  \"service_type\": \"<service_type>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ePrescriptions",
+      "description": "Endpoints for managing prescriptions.",
+      "item": [
+        {
+          "name": "GET /api/v1/prescriptions \u2014 Preview prescription",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/prescriptions?consent_token=<consent_token>",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "prescriptions"
+              ],
+              "query": [
+                {
+                  "key": "consent_token",
+                  "value": "<consent_token>",
+                  "description": "(required) Consent token",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Fetches a preview of a prescription using a consent token\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#preview-prescription"
+          }
+        },
+        {
+          "name": "POST /api/v1/prescriptions \u2014 Create prescription",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/prescriptions",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "prescriptions"
+              ]
+            },
+            "description": "Creates a new prescription for a patient\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#create-prescription",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"identification_number\": \"<identification_number>\",\n  \"identification_type\": \"<identification_type>\",\n  \"intervention_code\": \"<intervention_code>\",\n  \"items\": [],\n  \"regulation_body\": \"<regulation_body>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/prescriptions/dispenses \u2014 Create dispense",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/prescriptions/dispenses",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "prescriptions",
+                "dispenses"
+              ]
+            },
+            "description": "Creates a dispense for a prescription using the provided dispense details\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#create-dispense",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"actual_products\": [],\n  \"consent_token\": \"<consent_token>\",\n  \"doctors\": [],\n  \"intervention_code\": \"<intervention_code>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/prescriptions/doctors \u2014 Remove prescription doctor",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/prescriptions/doctors",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "prescriptions",
+                "doctors"
+              ]
+            },
+            "description": "Removes a doctor associated with a prescription using the provided details\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#remove-prescription-doctor",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"intervention_code\": \"<intervention_code>\",\n  \"practitioner_registration_number\": \"<practitioner_registration_number>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Claim Dispatch",
+      "description": "Endpoints for claim submission and dispatch.",
+      "item": [
+        {
+          "name": "POST /api/v1/claims/close \u2014 Close an existing claim",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/close",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "close"
+              ]
+            },
+            "description": "Closes an existing claim that is not planned to be submitted. Typically used to terminate a claim.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#close-an-existing-claim",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cancel_reason_text\": \"<cancel_reason_text>\",\n  \"cancel_reason_type\": \"WRONG_PATIENT\",\n  \"consent_token\": \"<consent_token>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/discharge \u2014 Discharge Inpatient",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/discharge",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "discharge"
+              ]
+            },
+            "description": "This API sends a One-Time Password (OTP) to the beneficiary or their next of kin for discharge consent.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#discharge-inpatient",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"discharge_date\": \"<discharge_date>\",\n  \"discharge_reason\": \"RECOVERED\",\n  \"invoice_number\": \"<invoice_number>\",\n  \"otp\": \"<otp>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/otp/discharge \u2014 Send OTP for Discharge",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/otp/discharge",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "otp",
+                "discharge"
+              ]
+            },
+            "description": "This API sends a One-Time Password (OTP) to the beneficiary or their next of kin for discharge consent.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#send-otp-for-discharge",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"patient_id\": \"<patient_id>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/submit \u2014 Submit a virtual claim",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/submit",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "submit"
+              ]
+            },
+            "description": "Finalizes a virtual claim by submitting it for processing and reimbursement. No further changes can be made to the claim after submission.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#submit-a-virtual-claim",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"invoice_number\": \"<invoice_number>\",\n  \"reason_for_unknown_patient\": \"<reason_for_unknown_patient>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/patients/next-of-kin/contacts \u2014 Add Next of Kin Contact",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/patients/next-of-kin/contacts",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "patients",
+                "next-of-kin",
+                "contacts"
+              ]
+            },
+            "description": "Adds a next of kin contact for a beneficiary.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#add-next-of-kin-contact",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"contact_value\": \"<contact_value>\",\n  \"next_of_kin_full_name\": \"<next_of_kin_full_name>\",\n  \"next_of_kin_id_number\": \"<next_of_kin_id_number>\",\n  \"next_of_kin_id_number_type\": \"National ID\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Emergency",
+      "description": " Endpoints for emergency case claims and protocols.",
+      "item": [
+        {
+          "name": "POST /api/v1/claims/doctors \u2014 Add Emergency Case Claim Doctor",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/doctors",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "doctors"
+              ]
+            },
+            "description": "Adds a doctor to an existing emergency case claim using their registration or identification details.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#add-emergency-case-claim-doctor",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\",\n  \"identification_number\": \"<identification_number>\",\n  \"identification_type\": \"registration_number\",\n  \"regulation_body\": \"KMPDC\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/v1/claims/doctors \u2014 Remove doctor from claim",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/doctors",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "doctors"
+              ]
+            },
+            "description": "Removes a doctor from an authorized claim\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#remove-doctor-from-claim",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_token\": \"<consent_token>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/emergency \u2014 Create Emergency Case Claim",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/emergency",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "emergency"
+              ]
+            },
+            "description": "This endpoint allows facilities to create a new virtual emergency case claim. Depending on the patient type, the request can be for either an identified or unidentified patient.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#create-emergency-case-claim",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"beneficiary_cr_id\": \"<beneficiary_cr_id>\",\n  \"brought_by\": \"RELATIVE\",\n  \"identification_number\": \"<identification_number>\",\n  \"identification_type\": \"registration_number\",\n  \"interventions\": [],\n  \"mode_of_arrival\": \"AMBULANCE\",\n  \"notes\": \"<notes>\",\n  \"otp\": \"<otp>\",\n  \"reference_number\": \"<reference_number>\",\n  \"regulation_body\": \"KMPDC\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /api/v1/claims/emergency/protocols \u2014 Get Emergency Protocols",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/emergency/protocols?active=<active>&intervention_code=<intervention_code>",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "emergency",
+                "protocols"
+              ],
+              "query": [
+                {
+                  "key": "active",
+                  "value": "<active>",
+                  "description": "(required) Filter intervention if it is still active",
+                  "disabled": false
+                },
+                {
+                  "key": "intervention_code",
+                  "value": "<intervention_code>",
+                  "description": "(required) Intervention applicable to a protocol",
+                  "disabled": false
+                }
+              ]
+            },
+            "description": "Retrieve a list of emergency protocols from the ILM Adapter API. These define the applicable clinical or management procedures for emergency cases filtered by status, intervention code, and facility details.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#get-emergency-protocols"
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/emergency/protocols \u2014 Add Emergency Case Protocol",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/emergency/protocols",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "emergency",
+                "protocols"
+              ]
+            },
+            "description": "This endpoint allows adding a treatment protocol to an existing emergency case claim.\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#add-emergency-case-protocol",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "consent_token",
+                  "type": "text",
+                  "description": "(required) Consent token",
+                  "value": "<consent_token>"
+                },
+                {
+                  "key": "protocol_code",
+                  "type": "text",
+                  "description": "(required) Protocol code",
+                  "value": "<protocol_code>"
+                },
+                {
+                  "key": "intervention_code",
+                  "type": "text",
+                  "description": "(required) Intervention code",
+                  "value": "<intervention_code>"
+                },
+                {
+                  "key": "unit_price",
+                  "type": "text",
+                  "description": "(required) Unit price",
+                  "value": "100.0"
+                },
+                {
+                  "key": "quantity",
+                  "type": "text",
+                  "description": "(required) Quantity",
+                  "value": "1"
+                },
+                {
+                  "key": "diagnoses",
+                  "type": "text",
+                  "description": "(optional) Comma-separated ICD diagnosis codes",
+                  "value": "<diagnoses>",
+                  "disabled": true
+                },
+                {
+                  "key": "attachments",
+                  "type": "text",
+                  "description": "(optional) Attachments metadata as JSON",
+                  "value": "<attachments>",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /api/v1/claims/emt \u2014 Creates an EMT claim",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/claims/emt",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "claims",
+                "emt"
+              ]
+            },
+            "description": "Creates an EMT claim\n\nRequired fields are marked; optional query params are disabled by default.\nPortal: https://afyaconnect.dha.go.ke/hie-api/eclaims#creates-an-emt-claim",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "consent_token",
+                  "type": "text",
+                  "description": "(required) Consent token",
+                  "value": "<consent_token>"
+                },
+                {
+                  "key": "protocol_code",
+                  "type": "text",
+                  "description": "(required) Protocol code",
+                  "value": "<protocol_code>"
+                },
+                {
+                  "key": "case_number",
+                  "type": "text",
+                  "description": "(required) Emergency case number",
+                  "value": "<case_number>"
+                },
+                {
+                  "key": "practitioner_reg_number",
+                  "type": "text",
+                  "description": "(required) Practitioner registration number",
+                  "value": "<practitioner_reg_number>"
+                },
+                {
+                  "key": "beneficiary_cr_id",
+                  "type": "text",
+                  "description": "(required) Patient (beneficiary) CR identifier",
+                  "value": "<beneficiary_cr_id>"
+                },
+                {
+                  "key": "otp",
+                  "type": "text",
+                  "description": "(required) One-time password for patient verification",
+                  "value": "<otp>"
+                },
+                {
+                  "key": "provider_registration_number",
+                  "type": "text",
+                  "description": "(required) Ambulance / EMT provider registration number",
+                  "value": "<provider_registration_number>"
+                },
+                {
+                  "key": "diagnoses",
+                  "type": "text",
+                  "description": "(required) JSON array of ICD diagnosis codes",
+                  "value": "<diagnoses>"
+                },
+                {
+                  "key": "interventions",
+                  "type": "text",
+                  "description": "(required) JSON array of intervention codes",
+                  "value": "<interventions>"
+                },
+                {
+                  "key": "attachments",
+                  "type": "text",
+                  "description": "(optional) JSON metadata; entries reference uploaded form file fields",
+                  "value": "<attachments>",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

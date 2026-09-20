@@ -10,8 +10,11 @@ published to PyPI so other facilities/HMIS vendors can use it.
 - How the endpoints chain into claim workflows: [docs/api/WORKFLOWS.md](docs/api/WORKFLOWS.md)
 
 **Status 2026-09-20:** docs captured, architecture revised (not FHIR; server-owned virtual claim keyed by `consent_token`).
-**Phase 0 done. Vertical slice live:** auth → eligibility → domain, proven against DHA UAT (`make live`). All gates green
-(ruff, mypy --strict, import-linter, pytest 96 % coverage). Next: consent + virtual claim (Phase 1–3 for those groups).
+**Implemented: 24 of 49 endpoints.** Live-verified on DHA UAT: auth, eligibility, benefits/sub-benefits/interventions,
+consent (authorize / get / reject). Contract-tested against documented shapes (live blocked by Q11): `claims.open_visit`
+and the whole `ClaimSession` — interventions, diagnoses, lines, attachments, preview, submit, close, payer status.
+Gates green: ruff, mypy --strict, import-linter, 140 tests / 95.6 % coverage. **Next:** pre-authorisation group, then
+live-verify the claim flow the moment a UAT beneficiary with a reachable phone exists.
 
 ---
 
@@ -57,15 +60,15 @@ No phase starts coding until its domain vocabulary is confirmed against the offi
 - [x] Codes & enums: `Icd11Code`, `InterventionCode`, `SchemeCode`, `DocumentType`, `RegulationBody`, `ServiceType`,
       `CancelReason`, `DischargeReason`, `IdentificationType`, `NextOfKinIdType` (values from WORKFLOWS §8)
 - [x] `Money` (Decimal, KES) with quantisation policy
-- [~] Read models: `Eligibility` ✔, `Authorization` ✔ (minimal), `VirtualClaim`, `Preauthorization` — derived behaviour only
+- [~] Read models: `Eligibility` ✔, `Authorization` ✔, `BenefitPackage`/`SubBenefit`/`InterventionCoverage` ✔, `VirtualClaim` ✔ (fields from docs; values unobserved), `Preauthorization` pending
 - [x] `LenientStrEnum` with unknown-value fallback (`EligibilityStatus`, `CoverageStatus`; more as observed) (`WorkflowState`, `AuthorizationStatus`, `PreauthStatus`)
 - [~] Request validation lives in value-object/command `__post_init__` and use cases (decision: no separate policy module until a cross-field rule needs one)
 - [x] Property-based tests (hypothesis) for Money; table tests for VOs
 
 ### Phase 2 — Ports & Use Cases  `[ ]`
-- [~] Ports (`typing.Protocol`, split by consumer): `EligibilityGateway` ✔, `TokenProvider` ✔, `Clock` ✔; `ConsentGateway`, `VirtualClaimGateway`,
-      `PreauthGateway`, `FileGateway` pending
-- [~] Use cases: `VerifyEligibility` ✔, `CaptureConsent`, `OpenVisit`, `Add/Remove{Intervention,Diagnosis,Line,Attachment}`,
+- [~] Ports (`typing.Protocol`, split by consumer): `EligibilityCheck`/`EligibilityGateway` ✔, `ConsentGateway` ✔, `VisitOpener`/`ClaimSubmitter`/`VirtualClaimGateway` ✔,
+      `TokenProvider` ✔, `Clock` ✔; `PreauthGateway`, `FileGateway` pending
+- [~] Use cases: `VerifyEligibility` ✔, `CaptureConsent` ✔, `OpenVisit` ✔, `SubmitClaim` ✔ (attempt-once + `SubmissionOutcomeUnknownError`), `CaptureConsent`, `OpenVisit`, `Add/Remove{Intervention,Diagnosis,Line,Attachment}`,
       `PreviewClaim`, `SubmitClaim` (attempt-once + `SubmissionOutcomeUnknownError`), `CloseClaim`, `DischargeInpatient`,
       `TrackPayerClaim`, `RequestPreauthorization`
 - [ ] Tests with in-memory fakes for every port — no HTTP, no mocks of domain objects
@@ -73,8 +76,8 @@ No phase starts coding until its domain vocabulary is confirmed against the offi
 ### Phase 3 — Wire Adapters  `[ ]`
 - [~] Pydantic v2 schemas per resource group (eligibility ✔, `ErrorEnvelope` ✔); alias generator for the `camelCase` (authorization/preauth) vs
       `snake_case` (claims) split; `ErrorEnvelope`
-- [ ] `requests.py`: domain → request spec (method, path, json | form | multipart). One module (`multipart.py`)
-      owns the "JSON-array-in-a-form-field" encoding quirk
+- [x] `requests.py`: domain → request spec (method, path, json | form | multipart). `add_line` owns the
+      "JSON-array-in-a-form-field" encoding; the transport emits filename-less multipart parts so `/claims/lines` is true multipart
 - [~] Mappers wire → domain (eligibility ✔); `error_translator.py` ✔ (incl. undocumented `trace_id`)
 - [x] **Spec drift test**: every request spec's method+path+required fields asserted against `docs/api/spec/*.json`
 - [~] Contract tests against recorded UAT fixtures (eligibility ✔)
@@ -88,7 +91,7 @@ No phase starts coding until its domain vocabulary is confirmed against the offi
 - [x] Contract tests with `respx`; `live` marker for UAT smoke tests (off by default)
 
 ### Phase 5 — Composition & Public API  `[ ]`
-- [~] `AsyncSHAClient` facade (`eligibility` ✔, `consent`, `claims`, `preauths`, `files`) + `ClaimSession`; composition root
+- [~] `AsyncSHAClient` facade (`eligibility` ✔, `consent` ✔, `claims.open_visit`/`resume` → `ClaimSession` ✔, `consent`, `claims`, `preauths`, `files`) + `ClaimSession`; composition root
 - [ ] `sha_claim.__all__` frozen; docstrings on every public symbol
 - [ ] README: install, 20-line happy path, error handling, configuration table
 - [ ] End-to-end examples against UAT: `examples/outpatient_claim.py`, `examples/inpatient_discharge.py`, `examples/preauth.py`
@@ -111,8 +114,8 @@ Still open — detailed in [docs/api/WORKFLOWS.md §9](docs/api/WORKFLOWS.md#9-o
 
 | # | Question | Blocks |
 |---|----------|--------|
-| Q1 | ~~How is the visit OTP triggered?~~ → `POST /claims/authorize` is the consent entry point (answered 2026-09-20). **Remaining:** is OTP delivery triggered *by* that call or before it? Confirm on UAT. | one-call vs two-step `CaptureConsent` |
-| Q2 | Field name for the biometric authorization GUID on `/claims/visit` | `OpenVisit` request schema |
+| Q1 | ~~visit OTP~~ **closed:** `authorize` (no otp) creates a PENDING authorization and sends the OTP; `visit` verifies (WORKFLOWS §9) | — |
+| Q2 | ~~biometric GUID field~~ **closed:** `visit` accepts `otp` \| `auth_guid` \| `match_id` | — |
 | Q3 | Inner schema of all `object[]` fields (preauth items/doctors/…, claim lines/invoices) | typed models vs `dict` passthrough in Phase 3 |
 | Q4 | Status vocabularies (`workflow_state`, `claim_auth_status`, preauth `status`, …) | enum values (fallback `Unknown` ships regardless) |
 | Q5 | Is `POST /claims/submit` idempotent per `consent_token`? | whether submit may ever be retried |
@@ -121,6 +124,7 @@ Still open — detailed in [docs/api/WORKFLOWS.md §9](docs/api/WORKFLOWS.md#9-o
 | Q8 | Encoding of "JSON array" form fields (`diagnoses`, `attachments`, `interventions`) | `multipart.py` |
 | Q9 | Does NaCare need a **sync** client? | whether to ship `SHAClient` (sync) in v1 |
 | Q10 | ~~UAT credentials~~ received 2026-09-20; stored in git-ignored `.env` | — |
+| Q11 | **A UAT beneficiary whose OTP we can receive** (the synthetic member's phone is not ours). Without it, `open_visit` and everything after it can only be contract-tested. | live tests for Phases 3–5 of the claim flow |
 
 Next sources: `https://hie-docs.dha.go.ke/` and the Postman collection `https://documenter.getpostman.com/view/39260559/2sB3dSPoWf`.
 

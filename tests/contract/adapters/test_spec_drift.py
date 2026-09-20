@@ -9,6 +9,33 @@ from tests.conftest import load_spec
 # (method, path, required query params, required body fields) — extend as gateways are added.
 SDK_REQUESTS: list[tuple[str, str, set[str], set[str]]] = [
     ("get", "/api/v1/patients/eligibility", {"identification_number", "identification_type"}, set()),
+    ("get", "/api/v1/patients/benefits", {"patient_id"}, set()),
+    ("get", "/api/v1/patients/sub-benefits", {"patient_id"}, set()),
+    ("get", "/api/v1/patients/benefits/interventions", {"patient_id", "sub_benefit_code"}, set()),
+    # `otp` is documented as required but UAT accepts its absence (creates a PENDING authorization) — WORKFLOWS §9.
+    ("post", "/api/v1/claims/authorize", set(), {"patient_id", "service_type", "interventions", "otp"}),
+    ("get", "/api/v1/claims/authorizations", {"token", "guid"}, set()),
+    ("post", "/api/v1/claims/authorizations/{consent_token}/reject", set(), set()),
+    ("post", "/api/v1/claims/visit", set(), {"patient_id", "service_type", "intervention_codes", "otp"}),
+    ("post", "/api/v1/claims/interventions", set(), {"consent_token", "intervention_code"}),
+    ("post", "/api/v1/claims/interventions/retire", set(), {"consent_token", "intervention_code"}),
+    ("post", "/api/v1/claims/interventions/restore", set(), {"consent_token", "intervention_code"}),
+    ("post", "/api/v1/claims/diagnoses", set(), {"consent_token", "icd_code", "intervention_code"}),
+    ("patch", "/api/v1/claims/diagnoses", set(), {"consent_token", "icd_code", "intervention_code"}),
+    ("post", "/api/v1/claims/lines", set(), {"consent_token", "intervention_code", "unit_price", "quantity"}),
+    ("patch", "/api/v1/claims/lines", set(), {"consent_token", "line_guid"}),
+    ("patch", "/api/v1/claims/lines/edit", set(), {"line_id"}),
+    (
+        "post",
+        "/api/v1/claims/attachments",
+        set(),
+        {"consent_token", "file_blob", "document_type", "intervention_code"},
+    ),
+    ("patch", "/api/v1/claims/attachments", set(), {"consent_token", "attachment_id", "intervention_code"}),
+    ("post", "/api/v1/claims/preview", set(), {"consent_token"}),
+    ("post", "/api/v1/claims/submit", set(), {"consent_token"}),
+    ("post", "/api/v1/claims/close", set(), {"consent_token", "cancel_reason_type", "cancel_reason_text"}),
+    ("get", "/api/v1/claims/preview/payer", {"guid", "provider_claim_no"}, set()),
 ]
 
 

@@ -156,15 +156,35 @@ Claim attachments can also be sent inline via `POST /claims/attachments`.
 - `identification_type` for eligibility is the literal `National ID` (echoed back as `requestIdType: 2`). Q7 answered.
 - `GET /facilities/{code}/beds/occupancy` **requires** a bearer token despite the spec saying otherwise.
 - `GET /preauths?consent_token=…` returns a paginated list `{pageSize, results[]}`, not a single object.
-- `identification_number=00000000` returns a synthetic member (`statusCode: "10"`, scheme `UHC`, coverage `status: "1"`) —
-  usable as a stable fixture (`tests/fixtures/eligibility_member_found.json`, sanitised).
+- `identification_number=00000000` returns a synthetic member (`statusCode: "10"`, scheme `UHC`, coverage `status: "1"`,
+  `memberCrNumber: CR7678914660684-5`) — usable as a stable fixture (`tests/fixtures/*.json`, sanitised).
+- **Consent is a two-step handshake (Q1 closed).** `POST /claims/authorize` *without* `otp` returns `200` with a
+  `status: "PENDING"`, `label: "UNAUTHORIZED"`, `isOpen: true` authorization (`guid`, `token`, `authCode`) and sends
+  the OTP to the beneficiary's registered phone. `POST /claims/visit` then verifies with **one of `otp`, `auth_guid`
+  or `match_id`** (Q2 closed) — the server says so verbatim when none is given. `visit` with an OTP but no pending
+  authorization fails with `OTP was not found for contact: +2547…`.
+- `service_type` on `/claims/authorize` accepts **`CAPITATION`** (docs list only OUTPATIENT/INPATIENT). Interventions with
+  `paymentMechanism: CAPITATION` are *refused* under `OUTPATIENT`
+  (`Kindly note the intervention Consultation(SHA-12-001) is not supported for service type OUTPATIENT`).
+  The SDK encodes this as `InterventionCoverage.service_type_for_authorization`.
+- Error envelope can also carry `details: [..]`, and `error` may be a JSON-encoded string from the upstream engine
+  (`{"error":"{\"error\":\"Kindly note…\"}"}`); `message` may end in a JSON blob (`{"Edi Error":{"detail":…}}`).
+  `ErrorEnvelope.detail()` unwraps all three.
+- `GET /claims/authorizations` returns a **list** (`[ {...} ]`), not an object.
+- Benefit reads are paginated: `{count, pageSize, currentPage, totalPages, results[]}`. `/patients/benefits` gives
+  `{parentBenefit, parentBenefitCode}`; `/patients/sub-benefits` gives `{code, name, accessPoint, parentBenefitCode}`;
+  `/patients/benefits/interventions` gives rich rows (`code, name, paymentMechanism, needsPreauth, needsDoctorAuthorization,
+  overallTariff, level2..6Tariff, applicableSchemes, fund, requires*Preauth`).
+- `GET /patients/benefits/utilization` returns 400 `invalid character 'P' looking for beginning of value` on UAT for the
+  synthetic patient — an upstream parsing bug, not a request error.
+- `POST /claims/authorizations/{token}/reject` → `200 {"message":"The authorization has been closed."}`.
 
 ## 10. Open questions the portal does not answer
 
 | # | Question | Why it matters |
 |---|---|---|
-| Q1 | **Partly answered (2026-09-20):** consent for both strategies starts at `POST /claims/authorize` ([portal](https://afyaconnect.dha.go.ke/hie-api/eclaims/authorizations#create-a-new-authorization-otp-or-biometrics)). Still to confirm on UAT: is `otp` required on the *first* call, or does the first call trigger delivery (`shaVerificationRequest`) and a later call verify it? | Determines whether `CaptureConsent` is one call or a two-step handshake |
-| Q2 | `/claims/visit` shows `otp` as required, but the description says biometrics passes an authorization GUID instead. What is the GUID field name? | Request schema for the biometric strategy |
+| Q1 | **Closed (UAT 2026-09-20):** two-step. `authorize` without `otp` → PENDING authorization + OTP sent; `visit` verifies. See §9. | — |
+| Q2 | **Closed:** `visit` takes one of `otp`, `auth_guid`, `match_id`. | — |
 | Q3 | Inner schema of `object[]` fields: preauth `items/diagnoses/doctors/attachments`, prescription `items`, dispense `actual_products/doctors`, and `claim_diagnoses`, `interventions`, `invoices` in claim responses. | Typed models vs `dict` passthrough |
 | Q4 | Vocabulary of `workflow_state`, `claim_auth_status`, `resubmission_workflow_state`, authorization `status`, preauth `status`/`doctorReviewStatus`, eligibility `statusCode`. | Status enums; must include `Unknown(raw)` fallback |
 | Q5 | Is `POST /claims/submit` idempotent for the same `consent_token`? What happens on a retried submit after a timeout? | Retry policy for the one call that moves money |

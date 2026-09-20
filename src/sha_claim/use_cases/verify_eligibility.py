@@ -5,11 +5,11 @@ from __future__ import annotations
 from sha_claim.domain.eligibility import Eligibility
 from sha_claim.domain.enums import IdentificationType
 from sha_claim.errors import RequestValidationError, Violation
-from sha_claim.ports.eligibility_gateway import EligibilityGateway
+from sha_claim.ports.eligibility_gateway import EligibilityCheck
 
 
 class VerifyEligibility:
-    def __init__(self, gateway: EligibilityGateway) -> None:
+    def __init__(self, gateway: EligibilityCheck) -> None:
         self._gateway = gateway
 
     async def execute(

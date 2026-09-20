@@ -10,6 +10,9 @@ __pycache__/
 dist/
 build/
 .venv/
+venv/
+/.venv/
+/.venv
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
@@ -22,3 +25,4 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+postman/*.local.json

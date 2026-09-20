@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.5] — 2026-09-20
+### Added
+- Facility identification per DHA (`X-Facility-Id` + `X-Facility-Id-Type`): `facility_scope()` context manager,
+  `activate_facility()` / `clear_facility()` for web-framework dependencies, `current_facility()`, and a static
+  default via `SHASettings(facility=…)` / `SHA_FACILITY_ID`. Both headers or neither; per-context, so a shared
+  client serves concurrent facilities safely.
+
 ## [0.1.4] — 2026-09-20
 ### Added
 - `sha.auth.token()` → `BearerToken` (`as_dict()` mirrors `POST /tenants/token` exactly) for callers that must reach the HIE directly.

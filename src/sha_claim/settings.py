@@ -37,6 +37,9 @@ class SHASettings:
     environment: Environment = Environment.UAT
     timeouts: Timeouts = Timeouts()
     token_expiry_skew_seconds: int = 60
+    facility: str | None = None
+    """Static X-Facility-Id for single-facility deployments. Multi-facility integrations use `facility_scope()` instead."""
+    facility_id_type: str = "fr-code"
 
     def __post_init__(self) -> None:
         missing = [
@@ -72,6 +75,8 @@ class SHASettings:
             base_url=base_url,
             environment=environment,
             timeouts=timeouts,
+            facility=e.get("SHA_FACILITY_ID") or None,
+            facility_id_type=e.get("SHA_FACILITY_ID_TYPE", "fr-code"),
         )
 
 

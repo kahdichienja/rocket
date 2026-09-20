@@ -39,6 +39,7 @@ from sha_claim.domain.identity import BearerToken, Identity
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.errors import RequestValidationError, Violation
 from sha_claim.events import EventHook
+from sha_claim.facility import FacilityScope
 from sha_claim.infrastructure.auth import OAuth2ClientCredentials
 from sha_claim.infrastructure.clock import SystemClock
 from sha_claim.infrastructure.retry import DEFAULT_RETRY, RetryPolicy
@@ -323,6 +324,9 @@ class AsyncSHAClient:
             retry=retry,
             on_event=on_event,
             clock=self._clock,
+            default_facility=FacilityScope(FacilityCode(settings.facility), settings.facility_id_type)
+            if settings.facility
+            else None,
         )
         self.auth = AuthResource(self._tokens)
         self.eligibility = EligibilityResource(HttpEligibilityGateway(self._transport))

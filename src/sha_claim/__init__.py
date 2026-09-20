@@ -83,10 +83,17 @@ from sha_claim.errors import (
     UnexpectedResponseError,
 )
 from sha_claim.events import EventHook, SDKEvent
+from sha_claim.facility import (
+    FacilityScope,
+    activate_facility,
+    clear_facility,
+    current_facility,
+    facility_scope,
+)
 from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 __all__ = [
     "AsyncSHAClient",
@@ -132,6 +139,7 @@ __all__ = [
     "Environment",
     "EventHook",
     "FacilityCode",
+    "FacilityScope",
     "FileId",
     "FundLimit",
     "Icd11Code",
@@ -185,4 +193,8 @@ __all__ = [
     "UtilizationBalance",
     "VirtualClaim",
     "__version__",
+    "activate_facility",
+    "clear_facility",
+    "current_facility",
+    "facility_scope",
 ]

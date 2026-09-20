@@ -63,6 +63,8 @@ Configuration is read from environment variables:
 | `SHA_CONNECT_TIMEOUT` | no | `5` | seconds |
 | `SHA_READ_TIMEOUT` | no | `30` | seconds |
 | `SHA_UPLOAD_TIMEOUT` | no | `120` | seconds, for multipart uploads |
+| `SHA_FACILITY_ID` | no | — | static `X-Facility-Id` for single-facility deployments (see *Facility scoping* in §3) |
+| `SHA_FACILITY_ID_TYPE` | no | `fr-code` | `X-Facility-Id-Type` |
 
 Missing or invalid settings raise `ConfigurationError` **when you create the client**, not later.
 
@@ -144,6 +146,19 @@ def audit(e: SDKEvent) -> None:
 async with AsyncSHAClient.from_env(on_event=audit) as sha:
     ...
 ```
+
+**Facility scoping.** DHA scopes claims/preauth/patient calls to one facility
+([docs](https://hie-docs.dha.go.ke/docs/authentication/process/facility-identification)). A facility-specific
+credential needs nothing: its token carries `facility_id`. A multi-facility integration sends
+`X-Facility-Id` + `X-Facility-Id-Type` on every request; the SDK does that for you:
+
+```python
+with facility_scope("FID-47-115307-8"):            # everything inside is scoped; safe under concurrency
+    await sha.eligibility.check(...)
+# or, in a per-request web dependency: activate_facility(code) … clear_facility()
+# or, one facility for the whole process: SHA_FACILITY_ID=FID-… / SHASettings(facility=...)
+```
+Headers override the token claim. The SDK never sends one header without the other.
 
 **Retries.** Reads (`GET`, and `preview`) are retried up to 3 times with jittered backoff on
 network errors and 408/429/502/503/504. Writes are **never** retried automatically. A `401` triggers

@@ -12,6 +12,7 @@ import httpx
 from sha_claim.adapters.wire.transport import TimeoutKind, WireRequest, WireResponse
 from sha_claim.errors import TransportError
 from sha_claim.events import EventHook, SDKEvent
+from sha_claim.facility import FacilityScope, current_facility
 from sha_claim.infrastructure.clock import SystemClock
 from sha_claim.infrastructure.logging import logger, redact
 from sha_claim.infrastructure.retry import DEFAULT_RETRY, RetryPolicy
@@ -35,6 +36,7 @@ class HttpxTransport:
         rng: random.Random | None = None,
         on_event: EventHook | None = None,
         clock: Clock | None = None,
+        default_facility: FacilityScope | None = None,
     ) -> None:
         self._http = http
         self._root = api_root.rstrip("/")
@@ -44,6 +46,7 @@ class HttpxTransport:
         self._sleep = sleep
         self._rng = rng
         self._on_event = on_event
+        self._default_facility = default_facility
         self._clock: Clock = clock or SystemClock()
 
     async def send(self, request: WireRequest) -> WireResponse:
@@ -81,6 +84,9 @@ class HttpxTransport:
         headers: dict[str, str] = {}
         if request.authenticated:
             headers["Authorization"] = f"Bearer {await self._tokens.access_token()}"
+        scope = current_facility() or self._default_facility
+        if scope is not None:
+            headers.update(scope.headers())  # both headers or neither — DHA ignores a lone one
         timeout = self._timeout_for(request.timeout)
         data, files = _encode_body(request)
         raw = await self._http.request(

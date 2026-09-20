@@ -1,0 +1,23 @@
+name: live-uat
+# Nightly regression against the DHA UAT environment. Requires repository secrets:
+#   SHA_CLIENT_ID, SHA_CLIENT_SECRET   (UAT credentials from DHA onboarding)
+on:
+  schedule:
+    - cron: "15 3 * * 1-5"   # 06:15 EAT, weekdays
+  workflow_dispatch:
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      - name: Smoke the UAT integration
+        env:
+          RUN_LIVE: "1"
+          SHA_ENVIRONMENT: uat
+          SHA_CLIENT_ID: ${{ secrets.SHA_CLIENT_ID }}
+          SHA_CLIENT_SECRET: ${{ secrets.SHA_CLIENT_SECRET }}
+        run: pytest -m live -v --tb=short

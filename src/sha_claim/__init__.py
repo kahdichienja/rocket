@@ -11,6 +11,7 @@ from sha_claim.domain.benefits import (
     UtilizationBalance,
 )
 from sha_claim.domain.claim import (
+    Blocker,
     ClaimAttachment,
     ClaimDiagnosis,
     ClaimIntervention,
@@ -78,6 +79,7 @@ from sha_claim.errors import (
     TransportError,
     UnexpectedResponseError,
 )
+from sha_claim.events import EventHook, SDKEvent
 from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
@@ -95,6 +97,7 @@ __all__ = [
     "BedOccupancy",
     "BenefitPackage",
     "BiometricGuid",
+    "Blocker",
     "BroughtBy",
     "CancelReason",
     "ClaimAttachment",
@@ -122,6 +125,7 @@ __all__ = [
     "EmergencyProtocol",
     "EmtClaim",
     "Environment",
+    "EventHook",
     "FacilityCode",
     "FileId",
     "FundLimit",
@@ -158,6 +162,7 @@ __all__ = [
     "RateLimitedError",
     "RegulationBody",
     "RequestValidationError",
+    "SDKEvent",
     "SHAClaimError",
     "SHASettings",
     "Scheme",

@@ -34,6 +34,7 @@ from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import ConsentToken, FacilityCode, FileId, PatientId
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.errors import RequestValidationError, Violation
+from sha_claim.events import EventHook
 from sha_claim.infrastructure.auth import OAuth2ClientCredentials
 from sha_claim.infrastructure.clock import SystemClock
 from sha_claim.infrastructure.retry import DEFAULT_RETRY, RetryPolicy
@@ -222,6 +223,7 @@ class AsyncSHAClient:
         clock: Clock | None = None,
         retry: RetryPolicy = DEFAULT_RETRY,
         http: httpx.AsyncClient | None = None,
+        on_event: EventHook | None = None,
     ) -> None:
         self.settings = settings
         self._clock = clock or SystemClock()
@@ -234,6 +236,7 @@ class AsyncSHAClient:
             http=self._http,
             clock=self._clock,
             expiry_skew_seconds=settings.token_expiry_skew_seconds,
+            on_event=on_event,
         )
         self._transport: Transport = transport or HttpxTransport(
             http=self._http,
@@ -241,6 +244,8 @@ class AsyncSHAClient:
             tokens=self._tokens,
             timeouts=settings.timeouts,
             retry=retry,
+            on_event=on_event,
+            clock=self._clock,
         )
         self.eligibility = EligibilityResource(HttpEligibilityGateway(self._transport))
         self.consent = ConsentResource(HttpConsentGateway(self._transport))
@@ -255,8 +260,8 @@ class AsyncSHAClient:
         self.files = FilesResource(HttpFileGateway(self._transport))
 
     @classmethod
-    def from_env(cls) -> Self:
-        return cls(SHASettings.from_env())
+    def from_env(cls, *, on_event: EventHook | None = None) -> Self:
+        return cls(SHASettings.from_env(), on_event=on_event)
 
     async def aclose(self) -> None:
         if self._owns_http:

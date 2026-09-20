@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import httpx
 
 from sha_claim.errors import AuthenticationError, TransportError
+from sha_claim.events import EventHook, SDKEvent
 from sha_claim.infrastructure.logging import logger
 from sha_claim.ports.clock import Clock
 
@@ -28,6 +29,7 @@ class OAuth2ClientCredentials:
         http: httpx.AsyncClient,
         clock: Clock,
         expiry_skew_seconds: int = 60,
+        on_event: EventHook | None = None,
     ) -> None:
         self._token_url = token_url
         self._client_id = client_id
@@ -35,6 +37,7 @@ class OAuth2ClientCredentials:
         self._http = http
         self._clock = clock
         self._skew = expiry_skew_seconds
+        self._on_event = on_event
         self._cached: _CachedToken | None = None
         self._lock = asyncio.Lock()
 
@@ -53,6 +56,7 @@ class OAuth2ClientCredentials:
         self._cached = None
 
     async def _fetch(self) -> _CachedToken:
+        started = self._clock.monotonic()
         try:
             response = await self._http.post(
                 self._token_url,
@@ -60,7 +64,9 @@ class OAuth2ClientCredentials:
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
         except httpx.HTTPError as exc:
+            self._emit(None, started, exc)
             raise TransportError(f"token endpoint unreachable: {exc}") from exc
+        self._emit(response.status_code, started)
         if response.status_code != 200:
             detail = _safe_message(response)
             raise AuthenticationError(detail, status=response.status_code, error=response.reason_phrase)
@@ -71,6 +77,23 @@ class OAuth2ClientCredentials:
             raise AuthenticationError("token response missing access_token/expires_in", status=200)
         logger.info("sha_claim: obtained access token (expires_in=%ss)", expires_in)
         return _CachedToken(token, self._clock.monotonic() + max(expires_in - self._skew, 1))
+
+    def _emit(self, status: int | None, started: float, error: Exception | None = None) -> None:
+        if self._on_event is None:
+            return
+        event = SDKEvent(
+            occurred_at=self._clock.now(),
+            method="POST",
+            path="/tenants/token",
+            status=status,
+            duration_ms=round((self._clock.monotonic() - started) * 1000, 1),
+            attempt=1,
+            error=type(error).__name__ if error else None,
+        )
+        try:
+            self._on_event(event)
+        except Exception:  # noqa: BLE001
+            logger.exception("sha_claim: on_event hook raised; ignoring")
 
 
 def _safe_message(response: httpx.Response) -> str:

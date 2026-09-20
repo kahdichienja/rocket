@@ -72,7 +72,8 @@ If you prefer code over env vars:
 from sha_claim import SHASettings, Environment, Timeouts
 
 settings = SHASettings(
-    client_id="…", client_secret="…",
+    client_id="…",
+    client_secret="…",
     base_url="https://ilm-dev.dha.go.ke/uat-middleware",
     environment=Environment.UAT,
     timeouts=Timeouts(connect=5, read=30, upload=120),
@@ -90,10 +91,12 @@ inside an event loop (`asyncio.run(...)`, or your FastAPI/Django-async handler).
 import asyncio
 from sha_claim import AsyncSHAClient, IdentificationType
 
+
 async def main() -> None:
-    async with AsyncSHAClient.from_env() as sha:          # reads SHA_* env vars
+    async with AsyncSHAClient.from_env() as sha:  # reads SHA_* env vars
         e = await sha.eligibility.check("12345678", IdentificationType.NATIONAL_ID)
         print(e.full_name, e.member_found)
+
 
 asyncio.run(main())
 ```
@@ -116,6 +119,20 @@ Constructor options, all optional (used mainly in tests):
 
 ```python
 AsyncSHAClient(settings, transport=…, tokens=…, clock=…, retry=RetryPolicy(max_attempts=3), http=httpx.AsyncClient())
+```
+
+**Observability.** Pass `on_event=` a callable and the SDK calls it once per HTTP attempt with an
+`SDKEvent` — `operation`, `status`, `duration_ms`, `attempt`, `trace_id`, redacted `consent_token`,
+`error`. The SDK **stores nothing**; your callback is where audit logging, metrics and alerting live.
+A hook that raises is logged and ignored — it can never break a claim call.
+
+```python
+def audit(e: SDKEvent) -> None:
+    db.insert("sha_events", operation=e.operation, status=e.status, trace_id=e.trace_id,
+              duration_ms=e.duration_ms, token=e.consent_token, at=e.occurred_at)
+    if not e.ok: metrics.increment("sha.errors", tags={"op": e.operation, "status": e.status})
+
+async with AsyncSHAClient.from_env(on_event=audit) as sha: ...
 ```
 
 **Retries.** Reads (`GET`, and `preview`) are retried up to 3 times with jittered backoff on
@@ -150,11 +167,12 @@ from sha_claim import BadRequestError, RequestValidationError, SHAClaimError
 
 try:
     auth = await sha.consent.authorize(patient, ServiceType.OUTPATIENT, ["SHA-12-001"])
-except RequestValidationError as e:        # nothing was sent
-    for v in e.violations: print(v.field, v.message)
-except BadRequestError as e:               # server refused
+except RequestValidationError as e:  # nothing was sent
+    for v in e.violations:
+        print(v.field, v.message)
+except BadRequestError as e:  # server refused
     log.warning("SHA rejected: %s (trace %s)", e, e.trace_id)
-except SHAClaimError:                      # anything else from the SDK
+except SHAClaimError:  # anything else from the SDK
     raise
 ```
 
@@ -191,10 +209,11 @@ All raise `ValueError` if empty.
 
 ```python
 from sha_claim import Money
-Money.kes("1500")        # KES 1,500.00
-Money.kes("1500.505")    # → 1500.51 (half-up to cents)
-Money.kes(1500) * 2      # KES 3,000.00
-Money(1500.0)            # TypeError — floats are refused on purpose; pass str/int/Decimal
+
+Money.kes("1500")  # KES 1,500.00
+Money.kes("1500.505")  # → 1500.51 (half-up to cents)
+Money.kes(1500) * 2  # KES 3,000.00
+Money(1500.0)  # TypeError — floats are refused on purpose; pass str/int/Decimal
 ```
 
 ### Consent proof
@@ -206,7 +225,8 @@ Money(1500.0)            # TypeError — floats are refused on purpose; pass str
 
 ```python
 from sha_claim import PractitionerRef, RegulationBody, IdentificationType
-PractitionerRef.registered("A1234", RegulationBody.KMPDC)                       # by registration number (usual)
+
+PractitionerRef.registered("A1234", RegulationBody.KMPDC)  # by registration number (usual)
 PractitionerRef("12345678", IdentificationType.NATIONAL_ID, RegulationBody.NCK)  # by national ID
 ```
 `RegulationBody`: `KMPDC` (doctors), `COC` (clinical officers), `NCK` (nurses).
@@ -215,7 +235,8 @@ PractitionerRef("12345678", IdentificationType.NATIONAL_ID, RegulationBody.NCK) 
 
 ```python
 from sha_claim import Attachment, DocumentType
-Attachment.from_path("discharge.pdf", DocumentType.DISCHARGE_SUMMARY)     # reads the file, guesses content type
+
+Attachment.from_path("discharge.pdf", DocumentType.DISCHARGE_SUMMARY)  # reads the file, guesses content type
 Attachment("inv.pdf", pdf_bytes, DocumentType.INVOICE, "application/pdf")
 ```
 Empty content or > 10 MB → `ValueError`. `DocumentType` has 31 values (`INVOICE`, `LAB_RESULTS`,
@@ -278,7 +299,7 @@ Returns **`Eligibility`**:
 | `active_schemes_on(day)` | `tuple[Scheme, …]` | |
 
 ```python
-e = await sha.eligibility.check("00000000", IdentificationType.NATIONAL_ID)   # UAT synthetic member
+e = await sha.eligibility.check("00000000", IdentificationType.NATIONAL_ID)  # UAT synthetic member
 if not e.is_covered_on(date.today()):
     raise Exception(f"not covered: {e.status_description}")
 patient = e.patient_id
@@ -314,7 +335,7 @@ Each `BenefitPackage`: `code` (`SHA-12`), `name` (`Outpatient Services`).
 ```python
 coverage = await sha.eligibility.interventions(patient, "SHA-12-SC-01")
 consultation = next(c for c in coverage if c.name == "Consultation")
-consultation.service_type_for_authorization    # ServiceType.CAPITATION on UAT
+consultation.service_type_for_authorization  # ServiceType.CAPITATION on UAT
 ```
 
 ### `utilization(patient, intervention) → UtilizationBalance`
@@ -474,6 +495,21 @@ await session.attach(Attachment.from_path("invoice.pdf", DocumentType.INVOICE), 
 `POST /claims/preview` `{consent_token}`. **The claim as the server sees it.** Safe to call any time
 (it's retried like a read). Use it to check totals before submitting, and to resolve an ambiguous submit.
 
+#### `VirtualClaim.submission_blockers() → tuple[Blocker, …]`
+Pure check over the snapshot `preview()` returned — nothing is stored or fetched. Each `Blocker`
+has `code`, `message`, `intervention`. Codes: `NO_BILLING_LINES`, `ZERO_TOTAL`, `NEGATIVE_TOTAL`,
+`PREAUTH_OUTSTANDING`, `NO_DIAGNOSIS`, `MISSING_DOCUMENTS`, `NO_ACTIVE_INTERVENTIONS`. It is
+conservative (it only interprets what the server said), so an empty tuple means *no known blocker*,
+not a guarantee. Use it to disable the Submit button and tell the biller why.
+
+```python
+claim = await session.preview()
+if blockers := claim.submission_blockers():
+    for b in blockers: print(b)            # PREAUTH_OUTSTANDING [SHA-08-006]: intervention needs a pre-authorisation…
+else:
+    await session.submit("INV-1")
+```
+
 #### `submit(invoice_number=None, *, reason_for_unknown_patient=None) → VirtualClaim`
 `POST /claims/submit` `{consent_token, [invoice_number], [reason_for_unknown_patient]}`.
 **Final.** No changes after this.
@@ -486,8 +522,8 @@ try:
     claim = await session.submit("INV-2026-000123")
 except SubmissionOutcomeUnknownError as e:
     log.warning("submit outcome unknown, trace %s", e.trace_id)
-    claim = await session.preview()          # the server knows; ask it
-    if claim.workflow_state not in SUBMITTED_STATES:   # your own mapping once you've seen real values
+    claim = await session.preview()  # the server knows; ask it
+    if claim.workflow_state not in SUBMITTED_STATES:  # your own mapping once you've seen real values
         claim = await session.submit("INV-2026-000123")
 ```
 
@@ -643,8 +679,16 @@ Claim documents normally go through `session.attach(...)`. These are for standal
 ```python
 import asyncio
 from datetime import date
-from sha_claim import (AsyncSHAClient, Attachment, DocumentType, IdentificationType, Money, Otp,
-                       SubmissionOutcomeUnknownError)
+from sha_claim import (
+    AsyncSHAClient,
+    Attachment,
+    DocumentType,
+    IdentificationType,
+    Money,
+    Otp,
+    SubmissionOutcomeUnknownError,
+)
+
 
 async def outpatient(id_number: str, read_otp_from_patient) -> str:
     async with AsyncSHAClient.from_env() as sha:
@@ -661,11 +705,11 @@ async def outpatient(id_number: str, read_otp_from_patient) -> str:
 
         # 3. Consent: this sends the SMS.
         await sha.consent.authorize(patient, service_type, [consultation.code])
-        otp = Otp(read_otp_from_patient())           # your UI asks the patient for the code
+        otp = Otp(read_otp_from_patient())  # your UI asks the patient for the code
 
         # 4. Open the claim.
         session = await sha.claims.open_visit(patient, service_type, [consultation.code], otp)
-        token_to_persist = session.consent_token.value   # save this if the visit spans requests
+        token_to_persist = session.consent_token.value  # save this if the visit spans requests
 
         # 5. Build it.
         await session.add_diagnosis("1A00", consultation.code)
@@ -681,6 +725,7 @@ async def outpatient(id_number: str, read_otp_from_patient) -> str:
             claim = await session.preview()
         return claim.consent_token.value
 
+
 asyncio.run(outpatient("00000000", lambda: input("OTP: ")))
 ```
 
@@ -691,21 +736,24 @@ session = await sha.claims.open_visit(patient, ServiceType.INPATIENT, ["SHA-08-0
 await session.add_diagnosis("JB0Z", "SHA-08-005")
 await session.add_line("SHA-08-005", Money.kes("10000"))
 # patient can't consent to discharge herself → register next of kin first
-await session.add_next_of_kin(full_name="Jane Doe", id_number="12345678",
-                              id_type=NextOfKinIdType.NATIONAL_ID, contact_value="+2547…")
+await session.add_next_of_kin(
+    full_name="Jane Doe", id_number="12345678", id_type=NextOfKinIdType.NATIONAL_ID, contact_value="+2547…"
+)
 await session.send_discharge_otp(patient)
-await session.discharge(discharge_date=date.today(), reason=DischargeReason.RECOVERED,
-                        invoice_number="INV-1", otp=read_otp())
+await session.discharge(
+    discharge_date=date.today(), reason=DischargeReason.RECOVERED, invoice_number="INV-1", otp=read_otp()
+)
 await session.submit("INV-1")
 ```
 
 ### 12.3 Something that needs pre-authorisation
 
 ```python
-session = await sha.claims.open_visit(patient, ServiceType.INPATIENT, ["SHA-08-006"], otp)   # Cesarean
+session = await sha.claims.open_visit(patient, ServiceType.INPATIENT, ["SHA-08-006"], otp)  # Cesarean
 pa = await session.request_preauth(
     "SHA-08-006",
-    service_start=start, service_end=end,
+    service_start=start,
+    service_end=end,
     items=[PreauthItem("CS", "Cesarean section", 1, Money.kes("30000"))],
     diagnoses=["JB0Z"],
     doctors=[PractitionerRef.registered("A1234", RegulationBody.KMPDC)],
@@ -713,7 +761,9 @@ pa = await session.request_preauth(
     attachments=[Attachment.from_path("preauth.pdf", DocumentType.PREAUTH_FORM)],
 )
 if pa.awaiting_doctor:
-    await session.request_doctor_consent("SHA-08-006", PractitionerRef.registered("A1234", RegulationBody.KMPDC))
+    await session.request_doctor_consent(
+        "SHA-08-006", PractitionerRef.registered("A1234", RegulationBody.KMPDC)
+    )
 # poll later:
 for p in await session.preauths():
     print(p.status, p.final_approved)
@@ -724,8 +774,9 @@ for p in await session.preauths():
 ```python
 doctor = PractitionerRef.registered("A1234", RegulationBody.KMPDC)
 protocols = await sha.emergency.protocols("SHA-19-001")
-session = await sha.emergency.open_case(doctor, "ER-0917", BroughtBy.PARAMEDICS, ModeOfArrival.AMBULANCE,
-                                        ["SHA-19-001"], patient=None)          # unidentified casualty
+session = await sha.emergency.open_case(
+    doctor, "ER-0917", BroughtBy.PARAMEDICS, ModeOfArrival.AMBULANCE, ["SHA-19-001"], patient=None
+)  # unidentified casualty
 await session.add_emergency_doctor(doctor)
 await session.add_protocol(protocols[0].code, "SHA-19-001", protocols[0].tariff, diagnoses=["NF0A"])
 await session.submit(reason_for_unknown_patient="unconscious, no ID")
@@ -756,9 +807,12 @@ from sha_claim import AsyncSHAClient, SHASettings
 
 settings = SHASettings(client_id="x", client_secret="y", base_url="https://uat.example/uat-middleware")
 
+
 @respx.mock
 async def test_my_code():
-    respx.post(f"{settings.api_root}/tenants/token").mock(return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600}))
+    respx.post(f"{settings.api_root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
     respx.get(f"{settings.api_root}/patients/eligibility").mock(return_value=httpx.Response(200, json={...}))
     async with AsyncSHAClient(settings) as sha:
         ...

@@ -99,6 +99,19 @@ class Invoice:
 
 
 @dataclass(frozen=True, slots=True)
+class Blocker:
+    """Something in the server's own snapshot that will stop `submit` from succeeding."""
+
+    code: str
+    message: str
+    intervention: InterventionCode | None = None
+
+    def __str__(self) -> str:
+        scope = f" [{self.intervention.value}]" if self.intervention else ""
+        return f"{self.code}{scope}: {self.message}"
+
+
+@dataclass(frozen=True, slots=True)
 class VirtualClaim:
     consent_token: ConsentToken
     guid: ClaimGuid | None
@@ -138,6 +151,58 @@ class VirtualClaim:
     @property
     def lines(self) -> tuple[ClaimLine, ...]:
         return tuple(line for invoice in self.invoices for line in invoice.lines)
+
+    @property
+    def active_interventions(self) -> tuple[ClaimIntervention, ...]:
+        return tuple(i for i in self.interventions if not _is_retired(i.workflow_state))
+
+    def submission_blockers(self) -> tuple[Blocker, ...]:
+        """Reasons the server will refuse `submit`, read off *this* snapshot. Empty tuple = nothing obvious.
+
+        Pure and stateless: it only interprets what the server returned (call `preview()` first). It is
+        deliberately conservative — it never invents rules the server did not express — so an empty result
+        means "no known blocker", not "guaranteed to succeed". The server's `submit` stays the final arbiter.
+        """
+        blockers: list[Blocker] = []
+        if not self.lines and self.is_zero:
+            blockers.append(Blocker("NO_BILLING_LINES", "the claim has no billed lines"))
+        elif self.is_zero or (self.total_amount is not None and self.total_amount.amount == 0):
+            blockers.append(Blocker("ZERO_TOTAL", "the claim total is zero"))
+        if self.is_negative:
+            blockers.append(Blocker("NEGATIVE_TOTAL", "the claim total is negative"))
+        for intervention in self.active_interventions:
+            if intervention.preauth_outstanding:
+                blockers.append(
+                    Blocker(
+                        "PREAUTH_OUTSTANDING",
+                        "intervention needs a pre-authorisation that does not exist yet",
+                        intervention.code,
+                    )
+                )
+            if self.diagnoses and not self.diagnoses_for(intervention.code):
+                blockers.append(
+                    Blocker("NO_DIAGNOSIS", "intervention has no diagnosis linked", intervention.code)
+                )
+            missing = self._missing_required_documents(intervention)
+            if missing:
+                blockers.append(
+                    Blocker(
+                        "MISSING_DOCUMENTS",
+                        f"required documents not attached: {', '.join(sorted(missing))}",
+                        intervention.code,
+                    )
+                )
+        if self.interventions and not self.active_interventions:
+            blockers.append(Blocker("NO_ACTIVE_INTERVENTIONS", "every intervention on the claim is retired"))
+        return tuple(blockers)
+
+    def _missing_required_documents(self, intervention: ClaimIntervention) -> set[str]:
+        if not (intervention.needs_preauth and intervention.required_preauth_document_types):
+            return set()
+        attached = {
+            a.attachment_type for a in self.attachments if a.intervention_code in (None, intervention.code)
+        }
+        return set(intervention.required_preauth_document_types) - attached
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,3 +315,7 @@ class LineResubmission:
     status: str
     message: str
     resubmitted_at: datetime | None = None
+
+
+def _is_retired(workflow_state: str) -> bool:
+    return workflow_state.strip().upper() in {"RETIRED", "CANCELLED", "CANCELED", "INACTIVE", "DELETED"}

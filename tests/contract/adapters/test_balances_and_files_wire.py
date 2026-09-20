@@ -9,11 +9,18 @@ from tests.conftest import load_examples
 
 
 def test_requests() -> None:
-    u = requests.utilization(PatientId("CR1"), InterventionCode("SHA-12-001"))
-    assert u.idempotent and u.params == {"patient_id": "CR1", "intervention_code": "SHA-12-001"}
-    p = requests.pomsf_balances(PatientId("CR1"), "2026", "P-1")
-    assert p.params == {"patient_id": "CR1", "policy_year": "2026", "principal_member_number": "P-1"}
-    assert "principal_member_number" not in requests.pomsf_balances(PatientId("CR1"), "2026", None).params
+    u = requests.utilization(PatientId("CR1111111111111-1"), InterventionCode("SHA-12-001"))
+    assert u.idempotent and u.params == {"patient_id": "CR1111111111111-1", "intervention_code": "SHA-12-001"}
+    p = requests.pomsf_balances(PatientId("CR1111111111111-1"), "2026", "P-1")
+    assert p.params == {
+        "patient_id": "CR1111111111111-1",
+        "policy_year": "2026",
+        "principal_member_number": "P-1",
+    }
+    assert (
+        "principal_member_number"
+        not in requests.pomsf_balances(PatientId("CR1111111111111-1"), "2026", None).params
+    )
     b = requests.bed_occupancy(FacilityCode("FID-47-105963-0"))
     assert b.path == "/facilities/FID-47-105963-0/beds/occupancy" and b.authenticated
     up = requests.upload("x.pdf", b"%PDF", "application/pdf")

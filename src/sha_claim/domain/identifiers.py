@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Self
 
@@ -26,9 +27,26 @@ class Identifier:
         return value if isinstance(value, cls) else cls(str(value))
 
 
+_CR_NUMBER = re.compile(r"^CR\d{13}-\d$")
+
+
 @dataclass(frozen=True, slots=True)
 class PatientId(Identifier):
-    """Client Registry (CR) number of a beneficiary — `patient_id` throughout the API."""
+    """Client Registry (CR) number of a beneficiary — `patient_id` throughout the API.
+
+    Format observed on DHA: `CR` + 13 digits + `-` + check digit (`CR7678914660684-5`). DHA accepts *any*
+    string here and will happily create authorizations against an HMIS's internal patient number, so the
+    shape is enforced before a request leaves.
+    """
+
+    def __post_init__(self) -> None:
+        Identifier.__post_init__(self)
+        value = self.value.upper()
+        if not _CR_NUMBER.match(value):
+            raise ValueError(
+                f"{self.value!r} is not a Client Registry number (expected CR + 13 digits + '-' + check digit)"
+            )
+        object.__setattr__(self, "value", value)
 
 
 @dataclass(frozen=True, slots=True)

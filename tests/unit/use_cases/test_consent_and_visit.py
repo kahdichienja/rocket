@@ -11,7 +11,7 @@ from sha_claim.errors import RequestValidationError
 from sha_claim.use_cases.capture_consent import CaptureConsent
 from sha_claim.use_cases.open_visit import OpenVisit
 
-P = PatientId("CR1")
+P = PatientId("CR1111111111111-1")
 
 
 def authorization() -> Authorization:

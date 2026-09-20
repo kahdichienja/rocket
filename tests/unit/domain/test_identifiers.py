@@ -1,26 +1,39 @@
 import pytest
 
-from sha_claim.domain.identifiers import ConsentToken, PatientId
+from sha_claim.domain.identifiers import ClaimGuid, ConsentToken, PatientId
 
 
 def test_identifier_strips_whitespace() -> None:
-    assert PatientId("  CR123 ").value == "CR123"
+    assert ConsentToken("  abc ").value == "abc"
 
 
 @pytest.mark.parametrize("raw", ["", "   "])
 def test_identifier_rejects_empty(raw: str) -> None:
-    with pytest.raises(ValueError, match="PatientId"):
+    with pytest.raises(ValueError, match="ConsentToken"):
+        ConsentToken(raw)
+
+
+@pytest.mark.parametrize("raw", ["CR7678914660684-5", " cr5274957287918-1 "])
+def test_patient_id_accepts_client_registry_numbers(raw: str) -> None:
+    assert PatientId(raw).value == raw.strip().upper()
+
+
+@pytest.mark.parametrize(
+    "raw", ["CR-2026-000018", "12345678", "CR123", "CR7678914660684", "PAT-TEST/00021/26"]
+)
+def test_patient_id_rejects_non_cr_numbers(raw: str) -> None:
+    with pytest.raises(ValueError, match="Client Registry"):
         PatientId(raw)
 
 
 def test_of_accepts_str_or_instance() -> None:
-    a = PatientId.of("CR1")
+    a = PatientId.of("CR7678914660684-5")
     assert PatientId.of(a) is a
-    assert a == PatientId("CR1")
+    assert a == PatientId("CR7678914660684-5")
 
 
 def test_distinct_identifier_types_are_not_equal() -> None:
-    assert PatientId("X") != ConsentToken("X")  # type: ignore[comparison-overlap]
+    assert ClaimGuid("X") != ConsentToken("X")  # type: ignore[comparison-overlap]
 
 
 def test_consent_token_is_redacted_in_repr_and_str() -> None:

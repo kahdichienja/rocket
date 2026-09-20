@@ -134,7 +134,9 @@ async def test_claim_session_end_to_end_over_http(settings: SHASettings) -> None
     )
 
     async with AsyncSHAClient(settings) as sha:
-        session = await sha.claims.open_visit("CR0", ServiceType.CAPITATION, ["SHA-12-001"], Otp("123456"))
+        session = await sha.claims.open_visit(
+            "CR0000000000000-0", ServiceType.CAPITATION, ["SHA-12-001"], Otp("123456")
+        )
         await session.add_diagnosis("1A00", "SHA-12-001")
         await session.add_line("SHA-12-001", Money.kes(1500), diagnoses=["1A00"])
         await session.attach(
@@ -363,7 +365,7 @@ async def test_files_and_occupancy_over_http(settings: SHASettings) -> None:
         stored = await sha.files.upload("x.pdf", b"%PDF", "application/pdf")
         link = await sha.files.download_link(stored.file_id or "f1")
         beds = await sha.eligibility.bed_occupancy("FID-1")
-        pomsf = await sha.eligibility.pomsf_balances("CR1", "2026")
+        pomsf = await sha.eligibility.pomsf_balances("CR1111111111111-1", "2026")
 
     assert stored.file_id is not None and link.url == "https://signed"
     assert beds.occupancy_rate == 0.5 and pomsf["memberNumber"] == "M1"

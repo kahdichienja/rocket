@@ -4,14 +4,18 @@ from sha_claim.domain.consent import BiometricGuid, MatchId, Otp
 from sha_claim.domain.enums import ServiceType
 from sha_claim.domain.identifiers import PatientId
 
-P = PatientId("CR1")
+P = PatientId("CR1111111111111-1")
 CODES = [InterventionCode("sha-12-001")]
 
 
 def test_authorize_omits_otp_when_absent() -> None:
     r = requests.authorize(P, ServiceType.CAPITATION, CODES, None)
     assert r.method == "POST" and r.path == "/claims/authorize"
-    assert r.json == {"patient_id": "CR1", "service_type": "CAPITATION", "interventions": ["SHA-12-001"]}
+    assert r.json == {
+        "patient_id": "CR1111111111111-1",
+        "service_type": "CAPITATION",
+        "interventions": ["SHA-12-001"],
+    }
     assert not r.idempotent
 
 
@@ -30,7 +34,9 @@ def test_open_visit_encodes_each_proof_kind() -> None:
 
 def test_get_and_reject_authorization() -> None:
     g = requests.get_authorization("tok", "guid", P)
-    assert g.params == {"token": "tok", "guid": "guid", "beneficiary_code": "CR1"} and g.idempotent
+    assert (
+        g.params == {"token": "tok", "guid": "guid", "beneficiary_code": "CR1111111111111-1"} and g.idempotent
+    )
     assert "beneficiary_code" not in requests.get_authorization("tok", "guid", None).params
     assert requests.reject_authorization("tok").path == "/claims/authorizations/tok/reject"
 
@@ -38,4 +44,4 @@ def test_get_and_reject_authorization() -> None:
 def test_send_visit_otp_request() -> None:
     r = requests.send_visit_otp(P, CODES)
     assert r.method == "POST" and r.path == "/claims/otp" and not r.idempotent
-    assert r.json == {"patient_id": "CR1", "intervention_codes": ["SHA-12-001"]}
+    assert r.json == {"patient_id": "CR1111111111111-1", "intervention_codes": ["SHA-12-001"]}

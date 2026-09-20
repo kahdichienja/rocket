@@ -13,7 +13,7 @@ class FakeGateway:
 
     async def check(self, identification_number: str, identification_type: IdentificationType) -> Eligibility:
         self.calls.append((identification_number, identification_type))
-        return Eligibility(PatientId("CR1"), "T", EligibilityStatus.MEMBER_FOUND, "", ())
+        return Eligibility(PatientId("CR1111111111111-1"), "T", EligibilityStatus.MEMBER_FOUND, "", ())
 
 
 async def test_trims_and_delegates() -> None:

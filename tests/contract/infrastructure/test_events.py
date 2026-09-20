@@ -22,7 +22,7 @@ async def test_events_are_emitted_per_attempt_with_redaction(settings: SHASettin
 
     events: list[SDKEvent] = []
     async with AsyncSHAClient(settings, on_event=events.append) as sha:
-        await sha.eligibility.benefits("CR1")
+        await sha.eligibility.benefits("CR1111111111111-1")
         session = sha.claims.resume("CR0-TOKEN12345")
         with pytest.raises(Exception):  # noqa: B017 — BadRequestError; the point is the events
             await session.preview()
@@ -55,4 +55,4 @@ async def test_broken_hook_never_breaks_a_call(settings: SHASettings) -> None:
         raise RuntimeError("observer bug")
 
     async with AsyncSHAClient(settings, on_event=explode) as sha:
-        assert await sha.eligibility.benefits("CR1") == ()
+        assert await sha.eligibility.benefits("CR1111111111111-1") == ()

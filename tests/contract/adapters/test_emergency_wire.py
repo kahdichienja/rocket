@@ -27,7 +27,7 @@ def test_open_emergency_case_identified_and_unidentified() -> None:
             BroughtBy.PARAMEDICS,
             ModeOfArrival.AMBULANCE,
             (CODE,),
-            PatientId("CR1"),
+            PatientId("CR1111111111111-1"),
             Otp("123456"),
             "unconscious",
         )
@@ -82,7 +82,7 @@ def test_emt_claim_multipart_matches_portal_fields() -> None:
         "CASE-1",
         "A1234",
         "AMB-9",
-        PatientId("CR1"),
+        PatientId("CR1111111111111-1"),
         Otp("123456"),
         (Icd11Code("NF0A"),),
         (CODE,),

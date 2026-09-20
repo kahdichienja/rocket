@@ -17,7 +17,7 @@ async def test_no_headers_by_default(settings: SHASettings) -> None:
         return_value=httpx.Response(200, json={"results": []})
     )
     async with AsyncSHAClient(settings) as sha:
-        await sha.eligibility.benefits("CR1")
+        await sha.eligibility.benefits("CR1111111111111-1")
     assert "x-facility-id" not in route.calls[0].request.headers
 
 
@@ -32,11 +32,11 @@ async def test_scope_sends_both_headers_and_is_per_task(settings: SHASettings) -
 
     async def call(facility: str | None) -> None:
         if facility is None:
-            await sha.eligibility.benefits("CR1")
+            await sha.eligibility.benefits("CR1111111111111-1")
         else:
             with facility_scope(facility):
                 await asyncio.sleep(0)  # yield so tasks interleave
-                await sha.eligibility.benefits("CR1")
+                await sha.eligibility.benefits("CR1111111111111-1")
 
     async with AsyncSHAClient(settings) as sha:
         await asyncio.gather(call("FID-47-115307-8"), call(None), call("FID-1-2-3"))
@@ -60,9 +60,9 @@ async def test_static_default_from_settings_and_scope_overrides_it() -> None:
         return_value=httpx.Response(200, json={"results": []})
     )
     async with AsyncSHAClient(settings) as sha:
-        await sha.eligibility.benefits("CR1")
+        await sha.eligibility.benefits("CR1111111111111-1")
         with facility_scope(FacilityCode("FID-1-1-1")):
-            await sha.eligibility.benefits("CR1")
+            await sha.eligibility.benefits("CR1111111111111-1")
     assert [c.request.headers["x-facility-id"] for c in route.calls] == ["FID-9-9-9", "FID-1-1-1"]
 
 

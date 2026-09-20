@@ -110,9 +110,9 @@ def test_payer_status_query() -> None:
 
 
 def test_discharge_and_next_of_kin_requests() -> None:
-    assert requests.send_discharge_otp(TOKEN, PatientId("CR1")).json == {
+    assert requests.send_discharge_otp(TOKEN, PatientId("CR1111111111111-1")).json == {
         "consent_token": "CR1-ABCDEFGHIJ",
-        "patient_id": "CR1",
+        "patient_id": "CR1111111111111-1",
     }
     d = requests.discharge(
         TOKEN,
@@ -160,5 +160,5 @@ def test_switch_intervention_request() -> None:
 
 
 def test_list_authorizations_request() -> None:
-    r = requests.list_authorizations(PatientId("CR1"))
-    assert r.idempotent and r.params == {"beneficiary_code": "CR1"}
+    r = requests.list_authorizations(PatientId("CR1111111111111-1"))
+    assert r.idempotent and r.params == {"beneficiary_code": "CR1111111111111-1"}

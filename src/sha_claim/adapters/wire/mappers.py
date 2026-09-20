@@ -458,7 +458,11 @@ def _to_authorized_intervention(i: AuthorizedInterventionWire) -> AuthorizedInte
 
 
 def _patient(cr_number: str) -> PatientId | None:
-    return PatientId(cr_number) if cr_number.strip() else None
+    """Responses may carry non-CR values (DHA stores whatever an integrator sent); those map to None, never raise."""
+    try:
+        return PatientId(cr_number) if cr_number.strip() else None
+    except ValueError:
+        return None
 
 
 def _money(raw: str | float | int | None, currency: str = "KES") -> Money | None:

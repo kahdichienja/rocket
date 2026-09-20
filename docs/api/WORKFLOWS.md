@@ -182,6 +182,12 @@ Claim attachments can also be sent inline via `POST /claims/attachments`.
 - `GET /patients/benefits/utilization` returns 400 `invalid character 'P' looking for beginning of value` on UAT for the
   synthetic patient — an upstream parsing bug, not a request error.
 - `POST /claims/authorizations/{token}/reject` → `200 {"message":"The authorization has been closed."}`.
+- `GET /patients/benefits/interventions` with an unknown/wrong `sub_benefit_code` (e.g. a policy number) returns `[]`, not 400.
+  A real member has ~30 sub-benefits / ~850 interventions and DHA serves each sub-benefit's list in ~1–4 s serially
+  (≈20 s for all): load sub-benefits first, interventions on demand. `applicableSchemes` on interventions uses a different
+  vocabulary (`UHC`, `PMF`) from eligibility `schemes[].schemeName` (`UHC`, `SHIF`) — do not join on it.
+- `patient_id` is not validated by DHA: authorizations exist on UAT with `beneficiaryCode` values like `CR-2026-000018`
+  (an HMIS's internal number). The SDK enforces the CR shape before sending.
 - **`GET /claims/authorizations` ignores `beneficiary_code`** (`?beneficiary_code=DOES-NOT-EXIST` returns the same 25 rows as no
   filter): it lists the *facility's* authorizations. The SDK filters by `beneficiaryCode` client-side. Also observed status
   `AUTHORIZED_PENDING_VISIT`.

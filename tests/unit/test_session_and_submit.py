@@ -489,7 +489,7 @@ async def test_inpatient_discharge_flow() -> None:
         contact_value="+254700000000",
     )
     assert contact.is_main_contact
-    assert await s.send_discharge_otp("CR1") == "OTP sent"
+    assert await s.send_discharge_otp("CR1111111111111-1") == "OTP sent"
     discharged = await s.discharge(
         reason=DischargeReason.RECOVERED,
         invoice_number="INV-1",
@@ -560,7 +560,7 @@ async def test_emergency_flow_through_session() -> None:
         "CASE-1",
         "A1",
         "AMB-9",
-        PatientId("CR1"),
+        PatientId("CR1111111111111-1"),
         Otp("123456"),
         (Icd11Code("NF0A"),),
         (InterventionCode("SHA-19-001"),),
@@ -579,10 +579,17 @@ def test_emergency_command_invariants() -> None:
         EmergencyCase(doctor, "REF", BroughtBy.RELATIVE, ModeOfArrival.WALK_IN, ())
     with pytest.raises(ValueError, match="case_number"):
         EmtClaim(
-            ProtocolCode("P"), "", "A1", "AMB", PatientId("CR1"), Otp("1"), (Icd11Code("NF0A"),), (CODE,)
+            ProtocolCode("P"),
+            "",
+            "A1",
+            "AMB",
+            PatientId("CR1111111111111-1"),
+            Otp("1"),
+            (Icd11Code("NF0A"),),
+            (CODE,),
         )
     with pytest.raises(ValueError, match="diagnosis"):
-        EmtClaim(ProtocolCode("P"), "C", "A1", "AMB", PatientId("CR1"), Otp("1"), (), (CODE,))
+        EmtClaim(ProtocolCode("P"), "C", "A1", "AMB", PatientId("CR1111111111111-1"), Otp("1"), (), (CODE,))
 
 
 async def test_switch_intervention() -> None:

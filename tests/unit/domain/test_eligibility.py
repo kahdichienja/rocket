@@ -12,7 +12,7 @@ def scheme(status: CoverageStatus | None, start: date, end: date) -> Scheme:
 
 def test_covered_when_member_found_and_scheme_active() -> None:
     e = Eligibility(
-        PatientId("CR1"),
+        PatientId("CR1111111111111-1"),
         "X",
         EligibilityStatus.MEMBER_FOUND,
         "",
@@ -25,7 +25,7 @@ def test_covered_when_member_found_and_scheme_active() -> None:
 
 def test_not_covered_when_status_not_covered_or_member_missing() -> None:
     inactive = Eligibility(
-        PatientId("CR1"),
+        PatientId("CR1111111111111-1"),
         "X",
         EligibilityStatus.MEMBER_FOUND,
         "",

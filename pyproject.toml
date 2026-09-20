@@ -46,7 +46,7 @@ Homepage = "https://github.com/nacare/sha-claim"
 Documentation = "https://github.com/nacare/sha-claim/tree/main/docs"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/sha_claim", "tests", "docs/api/spec", "README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml"]
+include = ["src/sha_claim", "tests", "docs/api/spec", "docs/GUIDE.md", "README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sha_claim"]

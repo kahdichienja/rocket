@@ -91,6 +91,8 @@ async with AsyncSHAClient.from_env() as sha:
 
 Every error is a subclass of `sha_claim.SHAClaimError`; see `sha_claim.errors`.
 
+**New to the SDK?** Read the [Consumer Guide](docs/GUIDE.md) — every method, its parameters, the HTTP call it makes, and the object it returns, plus end-to-end recipes.
+
 ## Design in one paragraph
 
 The server owns the claim: you open a *virtual claim*, receive a `consent_token`, mutate the claim

@@ -143,10 +143,10 @@ The server holds the truth; the SDK holds a snapshot mapped from the response of
 `visit / preview / submit`. It is behavioural where behaviour is *derived*, never *mutating*:
 
 ```python
-snapshot.workflow_state            # WorkflowState enum with Unknown(raw) fallback
-snapshot.is_submitted              # derived from state
-snapshot.net_total                 # Money, from total_claim_net_amount
-snapshot.lines_for(intervention)   # filtered view
+snapshot.workflow_state  # WorkflowState enum with Unknown(raw) fallback
+snapshot.is_submitted  # derived from state
+snapshot.net_total  # Money, from total_claim_net_amount
+snapshot.lines_for(intervention)  # filtered view
 ```
 Mutations are use cases that call the server and return a fresh snapshot. No local state machine
 pretends to know what the server will do.
@@ -155,7 +155,9 @@ pretends to know what the server will do.
 Binds a `ConsentToken` to the claim use cases so callers don't thread the token through every call:
 
 ```python
-session = await sha.claims.open_visit(patient, ServiceType.OUTPATIENT, [InterventionCode("...")], consent=Otp("123456"))
+session = await sha.claims.open_visit(
+    patient, ServiceType.OUTPATIENT, [InterventionCode("...")], consent=Otp("123456")
+)
 await session.add_diagnosis(Icd11Code("1A00"), intervention)
 await session.add_line(intervention, unit_price=Money.kes("1500.00"), quantity=1)
 await session.attach(Attachment.from_path("discharge.pdf", DocumentType.DISCHARGE_SUMMARY), intervention)
@@ -203,14 +205,30 @@ implement several of them — that is an implementation convenience, not a fat i
 
 ```python
 from sha_claim import AsyncSHAClient, SHASettings
-from sha_claim import (ConsentToken, PatientId, InterventionCode, Icd11Code, Money, ServiceType,
-                       DocumentType, Attachment, Otp, BiometricGuid, WorkflowState,
-                       Eligibility, VirtualClaim, SubmissionReceipt, Preauthorization)
+from sha_claim import (
+    ConsentToken,
+    PatientId,
+    InterventionCode,
+    Icd11Code,
+    Money,
+    ServiceType,
+    DocumentType,
+    Attachment,
+    Otp,
+    BiometricGuid,
+    WorkflowState,
+    Eligibility,
+    VirtualClaim,
+    SubmissionReceipt,
+    Preauthorization,
+)
 from sha_claim.errors import *
 
-async with AsyncSHAClient.from_env() as sha:           # SHA_BASE_URL, SHA_AUTH_URL, SHA_CLIENT_ID, SHA_CLIENT_SECRET, SHA_FACILITY_CODE
+async with (
+    AsyncSHAClient.from_env() as sha
+):  # SHA_BASE_URL, SHA_AUTH_URL, SHA_CLIENT_ID, SHA_CLIENT_SECRET, SHA_FACILITY_CODE
     elig = await sha.eligibility.check(id_number="37161876", id_type=IdentificationType.NATIONAL_ID)
-    patient = elig.patient_id                          # CR number
+    patient = elig.patient_id  # CR number
     session = await sha.claims.open_visit(patient, ServiceType.OUTPATIENT, [code], consent=Otp("..."))
     ...
     receipt = await session.submit(invoice_number="INV-1")
@@ -231,7 +249,7 @@ Sync client: deferred; if needed, generated via `unasync`, never hand-copied.
    operation is idempotent (all GETs, `/claims/preview`) **and** failure is transient
    (connect/read error, 408/429/502/503/504).
 3. **Submit is special.** `SubmitClaim` is attempted once. On a timeout/5xx with an ambiguous
-   outcome it raises `SubmissionOutcomeUnknown(consent_token)`; the caller resolves it with
+   outcome it raises `SubmissionOutcomeUnknownError(consent_token)`; the caller resolves it with
    `PreviewClaim` (state will be submitted or not) and decides. The SDK never guesses with money.
    Revisit once WORKFLOWS Q5 (server idempotency) is answered.
 4. **Auth**: 401 → one token refresh → one replay → `AuthenticationError`.
@@ -251,7 +269,7 @@ SHAClaimError
 ├── BadRequestError                  # 400 {error, message} — server-side validation
 ├── TransportError                   # network/timeout/5xx after retries; carries correlation_id
 │   ├── RateLimitedError             # 429
-│   └── SubmissionOutcomeUnknown     # submit sent, result unknown; carries consent_token
+│   └── SubmissionOutcomeUnknownError     # submit sent, result unknown; carries consent_token
 └── UnexpectedResponseError          # schema mismatch — the server changed under us
 ```
 Every wire failure is translated in `adapters/wire/error_translator.py` from the uniform

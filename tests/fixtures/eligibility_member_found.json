@@ -1,0 +1,43 @@
+{
+  "requestIdType": 2,
+  "requestIdNumber": "00000000",
+  "dateOfBirth": "",
+  "gender": "",
+  "age": 0,
+  "isAlive": false,
+  "whitelistedForOTP": false,
+  "facilityBiometricsEnforced": false,
+  "facilityContracts": null,
+  "memberCrNumber": "CR0000000000000-0",
+  "fullName": "TEST MEMBER",
+  "statusCode": "10",
+  "statusDesc": "Member found. Check Schemes for coverages",
+  "schemes": [
+    {
+      "schemeName": "UHC",
+      "schemeId": 1,
+      "memberType": "PRIMARY",
+      "policy": {
+        "startDate": "2024-10-01",
+        "endDate": "2034-09-30",
+        "number": "UHC-BE3MMPW5"
+      },
+      "coverage": {
+        "startDate": "2024-10-01",
+        "endDate": "2034-09-30",
+        "message": "The individual is covered.",
+        "reason": "Payment is up to Date. ",
+        "status": "1"
+      },
+      "principalContributor": {
+        "idNumber": "00000000",
+        "idType": "NATIONAL_ID",
+        "crNumber": "CR0000000000000-0",
+        "name": "TEST MEMBER",
+        "relationship": "",
+        "employmentType": "SELF_EMPLOYED",
+        "employerDetails": {}
+      }
+    }
+  ]
+}

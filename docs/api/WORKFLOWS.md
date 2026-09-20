@@ -146,7 +146,20 @@ Claim attachments can also be sent inline via `POST /claims/attachments`.
 | `mode_of_arrival` | `AMBULANCE`, `WALK-IN`, `OTHER` |
 | `next_of_kin_id_number_type` | `National ID`, `ClientRegistry ID`, `Birth Notification`, `Birth Certificate`, `Alien ID`, `Refugee ID`, `Mandate Number`, `Temporary ID` |
 
-## 9. Open questions the portal does not answer
+## 9. Observed on UAT (2026-09-20) — facts the portal omits
+
+- Token: Keycloak (`iss: https://accounts-uat.dha.go.ke/realms/hie`), `expires_in: 3600`. The JWT carries
+  `facility_id` (`FID-47-105963-0`) and `facility_id_type: fr-code` — **the facility is implied by the credential**,
+  so the SDK has no `SHA_FACILITY_CODE` setting.
+- Gateway is APISIX; every response has `x-request-id`. Error envelope is `{error, message, trace_id}` — `trace_id`
+  is undocumented but always present; the SDK attaches it to every raised error.
+- `identification_type` for eligibility is the literal `National ID` (echoed back as `requestIdType: 2`). Q7 answered.
+- `GET /facilities/{code}/beds/occupancy` **requires** a bearer token despite the spec saying otherwise.
+- `GET /preauths?consent_token=…` returns a paginated list `{pageSize, results[]}`, not a single object.
+- `identification_number=00000000` returns a synthetic member (`statusCode: "10"`, scheme `UHC`, coverage `status: "1"`) —
+  usable as a stable fixture (`tests/fixtures/eligibility_member_found.json`, sanitised).
+
+## 10. Open questions the portal does not answer
 
 | # | Question | Why it matters |
 |---|---|---|
@@ -155,8 +168,8 @@ Claim attachments can also be sent inline via `POST /claims/attachments`.
 | Q3 | Inner schema of `object[]` fields: preauth `items/diagnoses/doctors/attachments`, prescription `items`, dispense `actual_products/doctors`, and `claim_diagnoses`, `interventions`, `invoices` in claim responses. | Typed models vs `dict` passthrough |
 | Q4 | Vocabulary of `workflow_state`, `claim_auth_status`, `resubmission_workflow_state`, authorization `status`, preauth `status`/`doctorReviewStatus`, eligibility `statusCode`. | Status enums; must include `Unknown(raw)` fallback |
 | Q5 | Is `POST /claims/submit` idempotent for the same `consent_token`? What happens on a retried submit after a timeout? | Retry policy for the one call that moves money |
-| Q6 | Production base URL, rate limits, token TTL in practice. | Settings + backoff tuning |
-| Q7 | `identification_type` accepted by `/patients/eligibility` (string) vs `requestIdType` (integer) in its response — what are the codes? | Eligibility request model |
+| Q6 | Production base URL and rate limits. ~~Token TTL~~ observed 3600 s. | Settings + backoff tuning |
+| Q7 | ~~identification_type codes~~ **Answered:** literal strings (`National ID` → `requestIdType: 2`); see §9. Alien/Refugee codes still unobserved. | — |
 | Q8 | Multipart fields typed `string` but described as "JSON array" (`diagnoses`, `attachments`, `interventions` on lines/protocols/emt) — exact encoding (JSON string vs repeated fields vs comma-separated). | Serialiser correctness; `/emergency/protocols` says comma-separated while `/claims/lines` says JSON |
 
 Sources to check next: the DHA docs site (`https://hie-docs.dha.go.ke/`) and the public Postman

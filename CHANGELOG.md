@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-09-20
+### Added
+- `sha.auth.identity()` / `sha.auth.check()` — credential health and the facility/tenant the token represents, without exposing the token.
+
 ## [0.1.2] — 2026-09-20
 
 First public release. 49/49 published eClaims endpoints. Live-verified on DHA UAT through visit → diagnosis → line →

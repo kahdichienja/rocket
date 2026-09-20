@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import base64
+import json
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from types import TracebackType
 from typing import Any, Self
 
@@ -32,6 +35,7 @@ from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol
 from sha_claim.domain.enums import BroughtBy, IdentificationType, ModeOfArrival, ServiceType
 from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import ConsentToken, FacilityCode, FileId, PatientId
+from sha_claim.domain.identity import Identity
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.errors import RequestValidationError, Violation
 from sha_claim.events import EventHook
@@ -50,6 +54,51 @@ from sha_claim.settings import SHASettings
 from sha_claim.use_cases.capture_consent import CaptureConsent
 from sha_claim.use_cases.open_visit import OpenVisit
 from sha_claim.use_cases.verify_eligibility import VerifyEligibility
+
+
+class AuthResource:
+    """Credentials and identity. The SDK authenticates implicitly; this is for health checks and 'which facility am I'."""
+
+    def __init__(self, tokens: TokenProvider) -> None:
+        self._tokens = tokens
+
+    async def identity(self) -> Identity:
+        """`POST /tenants/token` (cached) → the facility/tenant the credentials belong to. Never returns the token."""
+        token = await self._tokens.access_token()
+        return _identity_from_jwt(token)
+
+    async def check(self) -> bool:
+        """True if a token can be obtained. Raises AuthenticationError/TransportError otherwise."""
+        await self._tokens.access_token()
+        return True
+
+
+def _identity_from_jwt(token: str) -> Identity:
+    claims: dict[str, object] = {}
+    parts = token.split(".")
+    if len(parts) == 3:
+        try:
+            payload = parts[1] + "=" * (-len(parts[1]) % 4)
+            decoded = json.loads(base64.urlsafe_b64decode(payload))
+            if isinstance(decoded, dict):
+                claims = decoded
+        except (ValueError, UnicodeDecodeError):
+            claims = {}
+    facility = str(claims.get("facility_id") or "").strip()
+    return Identity(
+        facility=FacilityCode(facility) if facility else None,
+        facility_id_type=str(claims.get("facility_id_type") or ""),
+        tenant_id=str(claims.get("tenant_id") or ""),
+        tenant_name=str(claims.get("tenant_name") or ""),
+        issuer=str(claims.get("iss") or ""),
+        client_id=str(claims.get("client_id") or claims.get("azp") or ""),
+        issued_at=_epoch(claims.get("iat")),
+        expires_at=_epoch(claims.get("exp")),
+    )
+
+
+def _epoch(value: object) -> datetime | None:
+    return datetime.fromtimestamp(int(value), tz=UTC) if isinstance(value, (int, float)) else None
 
 
 class EligibilityResource:
@@ -265,6 +314,7 @@ class AsyncSHAClient:
             on_event=on_event,
             clock=self._clock,
         )
+        self.auth = AuthResource(self._tokens)
         self.eligibility = EligibilityResource(HttpEligibilityGateway(self._transport))
         self.consent = ConsentResource(HttpConsentGateway(self._transport))
         gateways = ClaimGateways(

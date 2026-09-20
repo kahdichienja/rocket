@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-09-20
+### Added
+- `sha.auth.token()` → `BearerToken` (`as_dict()` mirrors `POST /tenants/token` exactly) for callers that must reach the HIE directly.
+
 ## [0.1.3] — 2026-09-20
 ### Added
 - `sha.auth.identity()` / `sha.auth.check()` — credential health and the facility/tenant the token represents, without exposing the token.

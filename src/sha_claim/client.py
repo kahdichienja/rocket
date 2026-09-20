@@ -35,7 +35,7 @@ from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol
 from sha_claim.domain.enums import BroughtBy, IdentificationType, ModeOfArrival, ServiceType
 from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import ConsentToken, FacilityCode, FileId, PatientId
-from sha_claim.domain.identity import Identity
+from sha_claim.domain.identity import BearerToken, Identity
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.errors import RequestValidationError, Violation
 from sha_claim.events import EventHook
@@ -71,6 +71,16 @@ class AuthResource:
         """True if a token can be obtained. Raises AuthenticationError/TransportError otherwise."""
         await self._tokens.access_token()
         return True
+
+    async def token(self) -> BearerToken:
+        """The raw grant (`access_token`, remaining `expires_in`, `token_type`), from the cache when still valid.
+
+        For callers that must hit the HIE directly (legacy code, bots). Prefer the SDK's own methods:
+        they never need the token.
+        """
+        token = await self._tokens.access_token()
+        remaining = _identity_from_jwt(token).seconds_remaining
+        return BearerToken(access_token=token, expires_in=remaining if remaining is not None else 0)
 
 
 def _identity_from_jwt(token: str) -> Identity:

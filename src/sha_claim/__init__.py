@@ -63,7 +63,7 @@ from sha_claim.domain.identifiers import (
     LineGuid,
     PatientId,
 )
-from sha_claim.domain.identity import Identity
+from sha_claim.domain.identity import BearerToken, Identity
 from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
@@ -86,7 +86,7 @@ from sha_claim.events import EventHook, SDKEvent
 from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 __all__ = [
     "AsyncSHAClient",
@@ -97,6 +97,7 @@ __all__ = [
     "AuthorizationStatus",
     "AuthorizedIntervention",
     "BadRequestError",
+    "BearerToken",
     "BedOccupancy",
     "BenefitPackage",
     "BiometricGuid",

@@ -27,3 +27,26 @@ class Identity:
         from datetime import datetime as _dt
 
         return max(0, int((self.expires_at - _dt.now(UTC)).total_seconds()))
+
+
+@dataclass(frozen=True, slots=True)
+class BearerToken:
+    """The raw OAuth2 grant as DHA returns it. Only for callers that must talk to the HIE directly.
+
+    Treat it like the client secret: it authorises every claim operation for the facility. `repr` is redacted.
+    """
+
+    access_token: str
+    expires_in: int
+    token_type: str = "Bearer"
+
+    def __repr__(self) -> str:
+        return f"BearerToken(access_token='{self.access_token[:8]}…', expires_in={self.expires_in}, token_type={self.token_type!r})"
+
+    def as_dict(self) -> dict[str, str | int]:
+        """`{access_token, expires_in, token_type}` — byte-for-byte the shape of `POST /tenants/token`."""
+        return {
+            "access_token": self.access_token,
+            "expires_in": self.expires_in,
+            "token_type": self.token_type,
+        }

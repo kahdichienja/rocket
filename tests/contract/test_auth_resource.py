@@ -61,3 +61,19 @@ async def test_check_raises_on_bad_credentials(settings: SHASettings) -> None:
     async with AsyncSHAClient(settings) as sha:
         with pytest.raises(AuthenticationError, match="invalid client"):
             await sha.auth.check()
+
+
+@respx.mock
+async def test_token_returns_the_raw_grant_shape_with_remaining_lifetime(settings: SHASettings) -> None:
+    now = int(datetime.now(UTC).timestamp())
+    raw = jwt({"iat": now, "exp": now + 3600})
+    respx.post(f"{settings.api_root}/tenants/token").mock(
+        return_value=httpx.Response(
+            200, json={"access_token": raw, "expires_in": 3600, "token_type": "Bearer"}
+        )
+    )
+    async with AsyncSHAClient(settings) as sha:
+        grant = await sha.auth.token()
+    assert set(grant.as_dict()) == {"access_token", "expires_in", "token_type"}
+    assert grant.access_token == raw and grant.token_type == "Bearer" and 3500 < grant.expires_in <= 3600
+    assert raw not in repr(grant)

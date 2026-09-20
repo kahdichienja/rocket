@@ -174,6 +174,22 @@ sha-claim @ git+ssh://git@<host>/<org>/sha_claim.git@<tag>
 ```
 or for local development `pip install -e ../../sha_claim`. Pin a tag; the SDK is `0.x`.
 
+## 6a. Status — Stage 1 shipped (2026-09-20)
+
+Live-verified through the FastAPI app against UAT: eligibility → interventions → `POST /consent/otp` (clears
+dangling PENDING authorizations, sends OTP, opens a journey) → `POST /claims/{journey}/open` (verifies OTP,
+persists the journey with the consent token Fernet-encrypted, snapshot with the token redacted) →
+`GET /claims`, `GET /consent/authorizations/{cr}`. Every SDK HTTP attempt lands in `hie_logs` as `SHA_*`.
+Files: `app/{domain,gateways,use_cases,infrastructure,routes}/sha/`, `models.SHAClaimJourney`,
+migration `a1c3e5f7b9d1`, `tests/sha/`. Nothing legacy touched except `main.py` (lifespan + 3 `include_router`).
+
+Two SDK defects found and fixed by this stage: `slots=True` dataclasses used zero-arg `super()` (breaks on
+Python < 3.14); `ConsentToken` serialised to its raw value in snapshots (now redacted).
+
+**Stage 2 (next):** build routes (diagnoses, lines, attachments, doctor), preview + `submission_blockers`,
+submit with discharge OTP/reason, close, payer status, `SUBMIT_UNKNOWN` resolution. Blocked on Q12 for live
+submit (an HWR-registered practitioner).
+
 ## 7. Delivery order
 
 | Step | Scope | Live-verifiable now? |

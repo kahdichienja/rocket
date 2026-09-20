@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
 ## [Unreleased]
+
+## [0.1.0] — 2026-09-20
+
+First public release. 49/49 published eClaims endpoints. Live-verified on DHA UAT through visit → diagnosis → line →
+preview; `submit` verified up to the doctor-attachment rule (needs an HWR-registered practitioner). Pre-auth nested
+request arrays remain unverified (docs/api/WORKFLOWS.md Q3). API is 0.x: expect breaking changes before 1.0.
 ### Added
 - `consent.send_otp()` (`POST /claims/otp`), `consent.list(patient)`, `session.add_doctor()`; `submit()` takes `discharge_reason` + discharge `otp` (all required by UAT, none documented). `discharge()` now takes a tz-aware `discharged_at`.
 - Wire models treat `null` as absent. `ClaimWorkflowState` / `AuthorizationStatus` populated from live observations.

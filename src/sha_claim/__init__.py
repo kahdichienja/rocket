@@ -85,7 +85,7 @@ from sha_claim.events import EventHook, SDKEvent
 from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
-__version__ = "0.1.0.dev0"
+__version__ = "0.1.0"
 
 __all__ = [
     "AsyncSHAClient",

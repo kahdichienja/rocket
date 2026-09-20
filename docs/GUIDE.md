@@ -153,7 +153,7 @@ credential needs nothing: its token carries `facility_id`. A multi-facility inte
 `X-Facility-Id` + `X-Facility-Id-Type` on every request; the SDK does that for you:
 
 ```python
-with facility_scope("FID-47-115307-8"):            # everything inside is scoped; safe under concurrency
+with facility_scope("FID-47-115307-8"):  # everything inside is scoped; safe under concurrency
     await sha.eligibility.check(...)
 # or, in a per-request web dependency: activate_facility(code) … clear_facility()
 # or, one facility for the whole process: SHA_FACILITY_ID=FID-… / SHASettings(facility=...)

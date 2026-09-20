@@ -38,6 +38,9 @@ class FakeConsent:
     async def reject(self, token: str) -> None:
         pass
 
+    async def send_otp(self, patient: PatientId, interventions: Sequence[InterventionCode]) -> str:
+        return "sent"
+
 
 class FakeClaims:
     def __init__(self) -> None:

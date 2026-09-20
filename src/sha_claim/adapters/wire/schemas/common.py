@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -11,6 +11,14 @@ class WireModel(BaseModel):
     """Base for server payloads: tolerant of unknown fields, accepts camelCase or snake_case."""
 
     model_config = ConfigDict(extra="allow", populate_by_name=True, alias_generator=to_camel, frozen=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _null_means_absent(cls, data: object) -> object:
+        """UAT sends `null` where the docs promise `[]`/`""`; treat null as missing so field defaults apply."""
+        if isinstance(data, dict):
+            return {k: v for k, v in data.items() if v is not None}
+        return data
 
     def unmodelled(self) -> dict[str, object]:
         return dict(self.model_extra or {})

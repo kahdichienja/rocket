@@ -131,6 +131,17 @@ class ConsentResource:
         codes = [InterventionCode.of(c) for c in interventions]
         return await self._capture.execute(PatientId.of(patient), service_type, codes, otp)
 
+    async def send_otp(
+        self, patient: PatientId | str, interventions: Sequence[InterventionCode | str]
+    ) -> str:
+        """`POST /claims/otp` — (re)send the visit OTP to the beneficiary's registered phone.
+
+        `authorize` already triggers the first OTP; use this to resend. On UAT the response message
+        contains the OTP itself (sandbox behaviour) — never rely on that in production.
+        """
+        codes = [InterventionCode.of(c) for c in interventions]
+        return await self._gateway.send_otp(PatientId.of(patient), codes)
+
     async def get(
         self, token: str, guid: str, patient: PatientId | str | None = None
     ) -> Authorization | None:

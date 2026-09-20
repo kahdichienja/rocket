@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sha_claim.domain.attachments import Attachment
@@ -214,18 +214,24 @@ class ClaimSession:
     async def discharge(
         self,
         *,
-        discharge_date: date,
         reason: DischargeReason,
         invoice_number: InvoiceNumber | str,
         otp: Otp | str,
+        discharged_at: datetime | None = None,
     ) -> VirtualClaim:
-        """`POST /claims/discharge` — closes the inpatient stay; call before `submit`."""
-        command = Discharge(
-            discharge_date,
-            reason,
-            InvoiceNumber.of(invoice_number),
-            otp if isinstance(otp, Otp) else Otp(otp),
-        )
+        """`POST /claims/discharge` — ends the visit. **Required before `submit` for every service type** (observed on UAT).
+
+        `discharged_at` defaults to now (UTC); if given it must be timezone-aware.
+        """
+        try:
+            command = Discharge(
+                discharged_at or datetime.now(UTC),
+                reason,
+                InvoiceNumber.of(invoice_number),
+                otp if isinstance(otp, Otp) else Otp(otp),
+            )
+        except ValueError as exc:
+            raise RequestValidationError([Violation("discharge", str(exc))]) from exc
         self.claim = await self._gateway.discharge(self.consent_token, command)
         return self.claim
 

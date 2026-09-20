@@ -270,12 +270,20 @@ class PayerClaimRecord:
 
 @dataclass(frozen=True, slots=True)
 class Discharge:
-    """Command for `POST /claims/discharge` (inpatient). The OTP comes from `send_discharge_otp`."""
+    """Command for `POST /claims/discharge`. The OTP comes from `send_discharge_otp`.
 
-    discharge_date: date
+    UAT requires discharge *before* submit for every service type, and wants an RFC 3339 datetime
+    (`2026-09-20T18:50:00+03:00`), not a bare date.
+    """
+
+    discharged_at: datetime
     reason: DischargeReason
     invoice_number: InvoiceNumber
     otp: Otp
+
+    def __post_init__(self) -> None:
+        if self.discharged_at.tzinfo is None:
+            raise ValueError("discharged_at must be timezone-aware")
 
 
 @dataclass(frozen=True, slots=True)

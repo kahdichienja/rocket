@@ -33,3 +33,9 @@ def test_get_and_reject_authorization() -> None:
     assert g.params == {"token": "tok", "guid": "guid", "beneficiary_code": "CR1"} and g.idempotent
     assert "beneficiary_code" not in requests.get_authorization("tok", "guid", None).params
     assert requests.reject_authorization("tok").path == "/claims/authorizations/tok/reject"
+
+
+def test_send_visit_otp_request() -> None:
+    r = requests.send_visit_otp(P, CODES)
+    assert r.method == "POST" and r.path == "/claims/otp" and not r.idempotent
+    assert r.json == {"patient_id": "CR1", "intervention_codes": ["SHA-12-001"]}

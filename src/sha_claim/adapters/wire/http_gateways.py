@@ -150,6 +150,10 @@ class HttpConsentGateway:
         response = await self._transport.send(requests.authorize(patient, service_type, interventions, otp))
         return mappers.to_authorization(parse_as(AuthorizationWire, response))
 
+    async def send_otp(self, patient: PatientId, interventions: Sequence[InterventionCode]) -> str:
+        response = await self._transport.send(requests.send_visit_otp(patient, interventions))
+        return parse_as(MessageWire, response).message
+
     async def get(self, token: str, guid: str, beneficiary: PatientId | None) -> Authorization | None:
         response = await self._transport.send(requests.get_authorization(token, guid, beneficiary))
         raise_for_status(response)

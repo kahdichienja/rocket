@@ -22,7 +22,9 @@ def test_recorded_uat_response_maps_to_domain() -> None:
     assert uhc.coverage.status is CoverageStatus.COVERED
     assert uhc.policy_period.start == date(2024, 10, 1)
     assert e.is_covered_on(date(2026, 9, 20))
-    assert "facilityContracts" in e.extra  # unmodelled fields are preserved, not dropped
+    assert (
+        "facilityContracts" not in e.extra
+    )  # null on the wire → treated as absent; non-null unmodelled fields are kept
 
 
 def test_unknown_status_code_does_not_break_mapping() -> None:

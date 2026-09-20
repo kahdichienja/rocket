@@ -475,7 +475,6 @@ async def test_preauth_local_validation() -> None:
 
 
 async def test_inpatient_discharge_flow() -> None:
-    from datetime import date
 
     gw = FakeGateway()
     s = ClaimSession(gateways(claims=gw), TOKEN, claim())
@@ -488,10 +487,10 @@ async def test_inpatient_discharge_flow() -> None:
     assert contact.is_main_contact
     assert await s.send_discharge_otp("CR1") == "OTP sent"
     discharged = await s.discharge(
-        discharge_date=date(2026, 9, 21),
         reason=DischargeReason.RECOVERED,
         invoice_number="INV-1",
         otp="123456",
+        discharged_at=datetime(2026, 9, 21, 10, tzinfo=UTC),
     )
     assert discharged.workflow_state == "DISCHARGED" and s.claim is discharged
     assert (await s.resubmit_lines()).status == "RESUBMITTED"

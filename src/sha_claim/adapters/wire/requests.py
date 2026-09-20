@@ -69,6 +69,15 @@ def authorize(
     return WireRequest("POST", "/claims/authorize", json=body)
 
 
+def send_visit_otp(patient: PatientId, codes: Sequence[InterventionCode]) -> WireRequest:
+    """`POST /claims/otp` — not on the eclaims portal pages, but live on UAT and used by NaCare's earlier adapter."""
+    return WireRequest(
+        "POST",
+        "/claims/otp",
+        json={"patient_id": patient.value, "intervention_codes": [c.value for c in codes]},
+    )
+
+
 def get_authorization(token: str, guid: str, beneficiary: PatientId | None) -> WireRequest:
     params = {"token": token, "guid": guid}
     if beneficiary is not None:
@@ -369,7 +378,7 @@ def discharge(token: ConsentToken, d: Discharge) -> WireRequest:
         "/claims/discharge",
         json={
             "consent_token": token.value,
-            "discharge_date": d.discharge_date.isoformat(),
+            "discharge_date": d.discharged_at.isoformat(timespec="seconds"),
             "discharge_reason": d.reason.value,
             "invoice_number": d.invoice_number.value,
             "otp": d.otp.code,

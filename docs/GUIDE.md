@@ -128,11 +128,21 @@ A hook that raises is logged and ignored — it can never break a claim call.
 
 ```python
 def audit(e: SDKEvent) -> None:
-    db.insert("sha_events", operation=e.operation, status=e.status, trace_id=e.trace_id,
-              duration_ms=e.duration_ms, token=e.consent_token, at=e.occurred_at)
-    if not e.ok: metrics.increment("sha.errors", tags={"op": e.operation, "status": e.status})
+    db.insert(
+        "sha_events",
+        operation=e.operation,
+        status=e.status,
+        trace_id=e.trace_id,
+        duration_ms=e.duration_ms,
+        token=e.consent_token,
+        at=e.occurred_at,
+    )
+    if not e.ok:
+        metrics.increment("sha.errors", tags={"op": e.operation, "status": e.status})
 
-async with AsyncSHAClient.from_env(on_event=audit) as sha: ...
+
+async with AsyncSHAClient.from_env(on_event=audit) as sha:
+    ...
 ```
 
 **Retries.** Reads (`GET`, and `preview`) are retried up to 3 times with jittered backoff on
@@ -505,7 +515,8 @@ not a guarantee. Use it to disable the Submit button and tell the biller why.
 ```python
 claim = await session.preview()
 if blockers := claim.submission_blockers():
-    for b in blockers: print(b)            # PREAUTH_OUTSTANDING [SHA-08-006]: intervention needs a pre-authorisation…
+    for b in blockers:
+        print(b)  # PREAUTH_OUTSTANDING [SHA-08-006]: intervention needs a pre-authorisation…
 else:
     await session.submit("INV-1")
 ```

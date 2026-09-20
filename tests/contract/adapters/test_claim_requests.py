@@ -1,5 +1,5 @@
 import json
-from datetime import date
+from datetime import UTC, date, datetime
 
 from sha_claim.adapters.wire import requests
 from sha_claim.adapters.wire.transport import TimeoutKind
@@ -106,11 +106,17 @@ def test_discharge_and_next_of_kin_requests() -> None:
         "patient_id": "CR1",
     }
     d = requests.discharge(
-        TOKEN, Discharge(date(2026, 9, 21), DischargeReason.REFERRED, InvoiceNumber("INV-1"), Otp("123456"))
+        TOKEN,
+        Discharge(
+            datetime(2026, 9, 21, 10, 30, tzinfo=UTC),
+            DischargeReason.REFERRED,
+            InvoiceNumber("INV-1"),
+            Otp("123456"),
+        ),
     )
     assert d.json == {
         "consent_token": "CR1-ABCDEFGHIJ",
-        "discharge_date": "2026-09-21",
+        "discharge_date": "2026-09-21T10:30:00+00:00",
         "discharge_reason": "REFERRED",
         "invoice_number": "INV-1",
         "otp": "123456",

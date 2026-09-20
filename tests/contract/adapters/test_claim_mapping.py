@@ -111,3 +111,20 @@ def test_invoices_and_lines_from_portal_example() -> None:
     assert (
         len(claim.interventions) == 1 and claim.interventions[0].preauth_outstanding is False
     )  # preauth_exist: true in sample
+
+
+def test_real_uat_visit_response_maps() -> None:
+    """Recorded from UAT 2026-09-20: nulls where the docs promise lists/strings, server-assigned invoice number."""
+    from tests.conftest import load_fixture
+
+    claim = mappers.to_virtual_claim(
+        VirtualClaimWire.model_validate(load_fixture("virtual_claim_opened.json"))
+    )
+    assert claim.workflow_state == "DRAFT" and claim.claim_auth_status == "AUTHORIZED"
+    assert claim.consent_token.value == "TESTTOKEN0"
+    assert (
+        claim.interventions[0].workflow_state == "ACTIVE"
+        and claim.interventions[0].required_preauth_document_types == ()
+    )
+    assert claim.invoices[0].workflow_state == "VALID" and claim.invoice_number is not None
+    assert claim.is_zero and claim.submission_blockers()[0].code == "NO_BILLING_LINES"

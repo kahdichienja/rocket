@@ -2,6 +2,8 @@
 
 Generated 2026-09-20 from the developer portal's server-side props (`/_next/data/<build>/hie-api/...json`), which is the same OpenAPI-derived AST the portal renders. Raw captures are in [spec/](spec/) for contract tests.
 
+Each endpoint includes the portal's example request/response JSON (`spec/examples.json`), which exposes the nested object shapes the field tables flatten.
+
 **Caveat:** the portal flattens `oneOf`/`anyOf` request schemas. Where a description says "choose one strategy" (e.g. OTP vs biometrics) but every field shows as required, trust the description; verify against the UAT sandbox before hard-coding validation.
 
 | API | Tag | Endpoints | File |

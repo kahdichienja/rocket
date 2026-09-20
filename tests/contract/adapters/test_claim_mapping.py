@@ -83,10 +83,31 @@ def test_virtual_claim_with_nested_collections() -> None:
     assert c.interventions[0].code == InterventionCode("SHA-12-001")
     assert c.diagnoses_for(InterventionCode("SHA-12-001"))[0].code == Icd11Code("1A00")
     assert c.attachments[0].attachment_id is not None and c.attachments[0].attachment_id.value == "a1"
-    assert c.extra["invoices"] == [{"anything": 1}]
+    assert c.invoices[0].extra == {"anything": 1}
 
 
-def test_payer_record_status_lookup() -> None:
-    assert mappers.to_payer_record({"status": "PAID"}).status == "PAID"
-    assert mappers.to_payer_record({"workflow_state": "REVIEW"}).status == "REVIEW"
-    assert mappers.to_payer_record("odd").status == ""
+def test_payer_record_from_portal_example() -> None:
+    from sha_claim.adapters.wire.schemas.claim import PayerClaimWire
+    from tests.conftest import load_examples
+
+    sample = load_examples()["eclaims"]["GET /api/v1/claims/preview/payer"]["responses"]["200"]["results"][0]
+    record = mappers.to_payer_record(PayerClaimWire.model_validate(sample))
+    assert record.guid == "guid" and record.provider_claim_no == "providerClaimNo"
+    assert record.status == "workflowDisplayName"
+    assert record.proposed_value == Money.kes(0)
+    assert "claimLines" in record.extra and "authorization" in record.extra
+
+
+def test_invoices_and_lines_from_portal_example() -> None:
+    from tests.conftest import load_examples
+
+    sample = load_examples()["eclaims"]["POST /api/v1/claims/visit"]["responses"]["200"]
+    claim = mappers.to_virtual_claim(VirtualClaimWire.model_validate(sample))
+    assert claim.consent_token.value == "authorization_code"
+    assert len(claim.invoices) == 1 and claim.invoices[0].invoice_type == "invoice_type"
+    assert claim.invoices[0].dispatch_status == "dispatch_status"
+    # portal sample has `lines: [{}]`: an empty line object maps to defaults rather than failing
+    assert len(claim.lines) == 1 and claim.lines[0].guid is None
+    assert (
+        len(claim.interventions) == 1 and claim.interventions[0].preauth_outstanding is False
+    )  # preauth_exist: true in sample

@@ -37,6 +37,47 @@ Doctor consent request
 | `request_type` | string | **yes** | Allowed: `PREAUTH_DOCTOR_APPROVAL_REQUEST`, `EMERGENCY_CLAIM_DOCTOR_APPROVAL_REQUEST`, `PRESCRIPTION_REQUEST` |
 | `service_type` | string | no |  |
 
+<details><summary>Example request body</summary>
+
+```json
+{
+  "consent_token": "consent_token",
+  "created": "created",
+  "emergency_claim_id": "emergency_claim_id",
+  "identification_number": "identification_number",
+  "identification_type": "registration_number",
+  "intervention_code": "intervention_code",
+  "practitioner_registration_number": "practitioner_registration_number",
+  "regulation_body": "KMPDC",
+  "request_type": "PREAUTH_DOCTOR_APPROVAL_REQUEST",
+  "service_type": "service_type"
+}
+```
+
+</details>
+
+<details><summary>curl</summary>
+
+```bash
+curl --request POST \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/claims/doctor-consent' \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "consent_token": "consent_token",
+  "created": "created",
+  "emergency_claim_id": "emergency_claim_id",
+  "identification_number": "identification_number",
+  "identification_type": "registration_number",
+  "intervention_code": "intervention_code",
+  "practitioner_registration_number": "practitioner_registration_number",
+  "regulation_body": "KMPDC",
+  "request_type": "PREAUTH_DOCTOR_APPROVAL_REQUEST",
+  "service_type": "service_type"
+}'
+```
+</details>
+
 **Responses**
 
 <details><summary><code>200</code> — Doctor consent request initiated successfully</summary>
@@ -47,6 +88,16 @@ Doctor consent request
 | `message` | string | no | @Description	Success message describing the operation result 	@Example		"Visit has been successfully started" |
 | `data` | object | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "data": {},
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>400</code> — Bad Request - Missing required fields</summary>
@@ -55,6 +106,16 @@ Doctor consent request
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -65,6 +126,16 @@ Doctor consent request
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>403</code> — Forbidden - Not enough permissions</summary>
@@ -74,6 +145,16 @@ Doctor consent request
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal Server Error - Service error occurred</summary>
@@ -82,6 +163,16 @@ Doctor consent request
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 

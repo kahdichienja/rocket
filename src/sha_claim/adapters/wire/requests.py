@@ -20,6 +20,8 @@ from sha_claim.domain.identifiers import (
     LineGuid,
     PatientId,
 )
+from sha_claim.domain.practitioner import PractitionerRef
+from sha_claim.domain.preauth import DoctorConsentRequest, PreauthRequest
 
 
 def eligibility_check(identification_number: str, identification_type: IdentificationType) -> WireRequest:
@@ -220,3 +222,107 @@ def payer_status(claim: ClaimGuid, provider_claim_no: str) -> WireRequest:
 
 def _diagnosis_body(token: ConsentToken, icd: Icd11Code, intervention: InterventionCode) -> dict[str, str]:
     return {"consent_token": token.value, "icd_code": icd.value, "intervention_code": intervention.value}
+
+
+# ── pre-authorisation ──
+
+
+def create_preauth(token: ConsentToken, request: PreauthRequest) -> WireRequest:
+    """Multipart with JSON-encoded arrays, mirroring `/claims/lines`.
+
+    UNVERIFIED (WORKFLOWS Q3): the portal does not publish the inner schema of `items`, `diagnoses`,
+    `doctors`, `attachments`. Field names below reuse the vocabulary the rest of the API uses; the
+    attachment convention ("entries reference uploaded form file fields") is documented on `/claims/emt`.
+    Fix here, and only here, once UAT confirms.
+    """
+    files: dict[str, tuple[str, bytes, str]] = {}
+    attachment_meta: list[dict[str, str]] = []
+    for index, attachment in enumerate(request.attachments):
+        part = f"attachment_{index}"
+        files[part] = (attachment.filename, attachment.content, attachment.content_type)
+        attachment_meta.append(
+            {"field": part, "document_type": attachment.document_type.value, "title": attachment.filename}
+        )
+    form = {
+        "consent_token": token.value,
+        "intervention_code": request.intervention_code.value,
+        "service_start": request.service_start.isoformat(),
+        "service_end": request.service_end.isoformat(),
+        "items": json.dumps(
+            [
+                {
+                    "item_code": i.code,
+                    "item_name": i.description,
+                    "quantity": str(Decimal(i.quantity)),
+                    "unit_price": i.unit_price.as_wire(),
+                }
+                for i in request.items
+            ]
+        ),
+        "diagnoses": json.dumps([{"icd_code": d.value} for d in request.diagnoses]),
+        "doctors": json.dumps([_practitioner_fields(d) for d in request.doctors]),
+        "attachments": json.dumps(attachment_meta),
+        "provider_notification_email": request.provider_notification_email,
+    }
+    return WireRequest(
+        "POST", "/preauths", form=form, files=files or None, multipart=True, timeout=TimeoutKind.UPLOAD
+    )
+
+
+def list_preauths(token: ConsentToken) -> WireRequest:
+    return WireRequest("GET", "/preauths", params={"consent_token": token.value})
+
+
+def remove_preauth_diagnosis(
+    token: ConsentToken, icd: Icd11Code, intervention: InterventionCode
+) -> WireRequest:
+    return WireRequest(
+        "DELETE", f"/preauths/diagnoses/{icd.value}", json=_diagnosis_body(token, icd, intervention)
+    )
+
+
+def remove_preauth_doctor(
+    token: ConsentToken, intervention: InterventionCode, registration_number: str
+) -> WireRequest:
+    return WireRequest(
+        "DELETE",
+        "/preauths/doctors",
+        json={
+            "consent_token": token.value,
+            "intervention_code": intervention.value,
+            "practitioner_registration_number": registration_number,
+        },
+    )
+
+
+def cancel_preauth(token: ConsentToken, intervention: InterventionCode) -> WireRequest:
+    return WireRequest(
+        "POST",
+        "/preauths/cancel",
+        json={"consent_token": token.value, "intervention_code": intervention.value},
+    )
+
+
+def doctor_consent(token: ConsentToken, request: DoctorConsentRequest) -> WireRequest:
+    body: dict[str, object] = {
+        "consent_token": token.value,
+        "intervention_code": request.intervention_code.value,
+        "request_type": request.request_type.value,
+        **_practitioner_fields(request.practitioner),
+    }
+    if request.service_type is not None:
+        body["service_type"] = request.service_type.value
+    if request.emergency_claim_id:
+        body["emergency_claim_id"] = request.emergency_claim_id
+    return WireRequest("POST", "/claims/doctor-consent", json=body)
+
+
+def _practitioner_fields(p: PractitionerRef) -> dict[str, str]:
+    fields = {
+        "identification_type": p.identification_type.value,
+        "identification_number": p.identification_number,
+        "regulation_body": p.regulation_body.value,
+    }
+    if p.identification_type is IdentificationType.REGISTRATION_NUMBER:
+        fields["practitioner_registration_number"] = p.identification_number
+    return fields

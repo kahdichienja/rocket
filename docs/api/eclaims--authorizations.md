@@ -30,6 +30,15 @@ Retrieves an existing authorization for a patient using the provided token, bene
 | `beneficiary_code` | string | no | The beneficiary's identifier code. |
 | `guid` | string | **yes** | Unique identifier (GUID) of the authorization record. |
 
+<details><summary>curl</summary>
+
+```bash
+curl --request GET \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/claims/authorizations?token=%3Ctoken%3E&guid=%3Cguid%3E' \
+  --header 'Authorization: Bearer <token>'
+```
+</details>
+
 **Responses**
 
 <details><summary><code>200</code> — Authorization retrieved successfully</summary>
@@ -84,6 +93,68 @@ Retrieves an existing authorization for a patient using the provided token, bene
 | `updated_by` | string | no |  |
 | `workStationId` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "authCode": "authCode",
+  "authorizationReason": "authorizationReason",
+  "authorizationType": [
+    "string"
+  ],
+  "authorizingDeviceOs": "authorizingDeviceOs",
+  "beneficiary": 0,
+  "beneficiaryCode": "beneficiaryCode",
+  "beneficiaryJoinDate": "beneficiaryJoinDate",
+  "beneficiaryName": "beneficiaryName",
+  "beneficiaryNumber": "beneficiaryNumber",
+  "beneficiaryScheme": "beneficiaryScheme",
+  "benefitType": "benefitType",
+  "biometricMatchLogId": "biometricMatchLogId",
+  "createdByName": "createdByName",
+  "created_by": "created_by",
+  "dateAuthorized": "dateAuthorized",
+  "ekycToken": "ekycToken",
+  "endDate": "endDate",
+  "endedVia": "endedVia",
+  "expiry": "expiry",
+  "guardian": 0,
+  "guid": "guid",
+  "id": 0,
+  "isBiometricsDischargeAuthorization": true,
+  "isComplete": true,
+  "isElective": true,
+  "isEmergency": true,
+  "isOpen": true,
+  "label": "label",
+  "needsPreauth": true,
+  "notes": "notes",
+  "overallPreauthFinalised": true,
+  "parentAuthorization": 0,
+  "parentType": "parentType",
+  "payerName": "payerName",
+  "payerSladeCode": 0,
+  "provider": 0,
+  "providerFid": "providerFid",
+  "providerName": "providerName",
+  "requestedBy": "requestedBy",
+  "sessionType": "sessionType",
+  "shaGuid": "shaGuid",
+  "shaVerificationRequest": {
+    "embedExpiry": 0,
+    "embededToken": "embededToken",
+    "requestId": "requestId",
+    "requestUrl": "requestUrl"
+  },
+  "shaVerificationRequestId": "shaVerificationRequestId",
+  "status": "status",
+  "token": "token",
+  "updated_by": "updated_by",
+  "workStationId": "workStationId"
+}
+```
+
 </details>
 
 <details><summary><code>400</code> — Bad Request - Invalid request or authorization retrieval failed</summary>
@@ -92,6 +163,16 @@ Retrieves an existing authorization for a patient using the provided token, bene
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -102,6 +183,16 @@ Retrieves an existing authorization for a patient using the provided token, bene
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal Server Error</summary>
@@ -110,6 +201,16 @@ Retrieves an existing authorization for a patient using the provided token, bene
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -134,6 +235,39 @@ Authorization request payload. Choose one strategy: OTP (phone-based one-time pa
 | `service_type` | string | **yes** | Type of service being authorized. Allowed: `OUTPATIENT`, `INPATIENT` |
 | `otp` | string | **yes** | One-time password delivered to the patient's registered phone number. |
 | `interventions` | string[] | **yes** | List of intervention codes for the services being requested in this visit. |
+
+<details><summary>Example request body</summary>
+
+```json
+{
+  "patient_id": "patient_id",
+  "service_type": "OUTPATIENT",
+  "otp": "otp",
+  "interventions": [
+    "string"
+  ]
+}
+```
+
+</details>
+
+<details><summary>curl</summary>
+
+```bash
+curl --request POST \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/claims/authorize' \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "patient_id": "patient_id",
+  "service_type": "OUTPATIENT",
+  "otp": "otp",
+  "interventions": [
+    "string"
+  ]
+}'
+```
+</details>
 
 **Responses**
 
@@ -189,6 +323,68 @@ Authorization request payload. Choose one strategy: OTP (phone-based one-time pa
 | `updated_by` | string | no |  |
 | `workStationId` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "authCode": "authCode",
+  "authorizationReason": "authorizationReason",
+  "authorizationType": [
+    "string"
+  ],
+  "authorizingDeviceOs": "authorizingDeviceOs",
+  "beneficiary": 0,
+  "beneficiaryCode": "beneficiaryCode",
+  "beneficiaryJoinDate": "beneficiaryJoinDate",
+  "beneficiaryName": "beneficiaryName",
+  "beneficiaryNumber": "beneficiaryNumber",
+  "beneficiaryScheme": "beneficiaryScheme",
+  "benefitType": "benefitType",
+  "biometricMatchLogId": "biometricMatchLogId",
+  "createdByName": "createdByName",
+  "created_by": "created_by",
+  "dateAuthorized": "dateAuthorized",
+  "ekycToken": "ekycToken",
+  "endDate": "endDate",
+  "endedVia": "endedVia",
+  "expiry": "expiry",
+  "guardian": 0,
+  "guid": "guid",
+  "id": 0,
+  "isBiometricsDischargeAuthorization": true,
+  "isComplete": true,
+  "isElective": true,
+  "isEmergency": true,
+  "isOpen": true,
+  "label": "label",
+  "needsPreauth": true,
+  "notes": "notes",
+  "overallPreauthFinalised": true,
+  "parentAuthorization": 0,
+  "parentType": "parentType",
+  "payerName": "payerName",
+  "payerSladeCode": 0,
+  "provider": 0,
+  "providerFid": "providerFid",
+  "providerName": "providerName",
+  "requestedBy": "requestedBy",
+  "sessionType": "sessionType",
+  "shaGuid": "shaGuid",
+  "shaVerificationRequest": {
+    "embedExpiry": 0,
+    "embededToken": "embededToken",
+    "requestId": "requestId",
+    "requestUrl": "requestUrl"
+  },
+  "shaVerificationRequestId": "shaVerificationRequestId",
+  "status": "status",
+  "token": "token",
+  "updated_by": "updated_by",
+  "workStationId": "workStationId"
+}
+```
+
 </details>
 
 <details><summary><code>400</code> — Bad Request - Missing or invalid fields</summary>
@@ -197,6 +393,16 @@ Authorization request payload. Choose one strategy: OTP (phone-based one-time pa
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -207,6 +413,16 @@ Authorization request payload. Choose one strategy: OTP (phone-based one-time pa
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal Server Error - Service error occurred</summary>
@@ -215,6 +431,16 @@ Authorization request payload. Choose one strategy: OTP (phone-based one-time pa
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -235,6 +461,15 @@ Rejects existing pending biometrics authorization.
 |---|---|---|---|
 | `consent_token` | string | **yes** | Consent Token |
 
+<details><summary>curl</summary>
+
+```bash
+curl --request POST \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/claims/authorizations/:consent_token/reject' \
+  --header 'Authorization: Bearer <token>'
+```
+</details>
+
 **Responses**
 
 <details><summary><code>200</code> — Authorization rejected</summary>
@@ -242,6 +477,15 @@ Rejects existing pending biometrics authorization.
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `message` | string | no |  |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "message": "message"
+}
+```
 
 </details>
 
@@ -252,6 +496,16 @@ Rejects existing pending biometrics authorization.
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>403</code> — Forbidden - Tenant context required</summary>
@@ -261,6 +515,16 @@ Rejects existing pending biometrics authorization.
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal Server Error - Service error occurred</summary>
@@ -269,6 +533,16 @@ Rejects existing pending biometrics authorization.
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 

@@ -12,15 +12,19 @@ from sha_claim.adapters.wire.schemas.claim import (
     ClaimDiagnosisWire,
     ClaimInterventionWire,
     ClaimLineWire,
+    InvoiceWire,
+    PayerClaimWire,
     VirtualClaimWire,
 )
 from sha_claim.adapters.wire.schemas.eligibility import CoverageWire, EligibilityWire, SchemeWire
+from sha_claim.adapters.wire.schemas.preauth import PreauthorizationWire
 from sha_claim.domain.benefits import BenefitPackage, InterventionCoverage, SubBenefit
 from sha_claim.domain.claim import (
     ClaimAttachment,
     ClaimDiagnosis,
     ClaimIntervention,
     ClaimLine,
+    Invoice,
     PayerClaimRecord,
     VirtualClaim,
 )
@@ -43,6 +47,7 @@ from sha_claim.domain.identifiers import (
     PatientId,
 )
 from sha_claim.domain.money import Money
+from sha_claim.domain.preauth import Preauthorization
 
 
 def to_eligibility(w: EligibilityWire) -> Eligibility:
@@ -132,6 +137,7 @@ def to_virtual_claim(w: VirtualClaimWire) -> VirtualClaim:
         interventions=tuple(to_claim_intervention(i) for i in w.interventions),
         diagnoses=tuple(to_claim_diagnosis(d) for d in w.claim_diagnoses),
         attachments=tuple(to_claim_attachment(a) for a in w.claim_attachments),
+        invoices=tuple(to_invoice(i, w.currency) for i in w.invoices),
         is_negative=w.is_negative,
         is_zero=w.is_zero,
         extra=w.unmodelled(),
@@ -199,8 +205,68 @@ def to_claim_attachment(w: ClaimAttachmentWire) -> ClaimAttachment:
     )
 
 
-def to_payer_record(raw: object) -> PayerClaimRecord:
-    return PayerClaimRecord(extra=dict(raw) if isinstance(raw, dict) else {"value": raw})
+def to_preauthorization(w: PreauthorizationWire) -> Preauthorization:
+    currency = w.provider_currency or "KES"
+    return Preauthorization(
+        guid=w.guid,
+        token=w.token,
+        intervention_code=_intervention(w.intervention_code),
+        status=w.status,
+        doctor_review_status=w.doctor_review_status,
+        needs_doctor_approval=w.needs_doctor_approval,
+        doctor_approved=w.doctor_approved,
+        doctors_required=w.number_of_preauth_doctors_required,
+        is_request_phase=w.is_request_phase,
+        is_response_phase=w.is_response_phase,
+        total_estimated=_money(w.total_estimated_amount_for_preauth, currency),
+        interim_approved=_money(w.total_interim_approved_amount_for_preauth, currency),
+        final_approved=_money(w.final_approved_amount, currency),
+        service_start=parse_datetime(w.service_start),
+        service_end=parse_datetime(w.service_end),
+        provider_notification_email=w.provider_notification_email,
+        member_name=w.member_name,
+        description=w.description,
+        countdown=w.countdown,
+        record_id=w.id,
+        extra=w.unmodelled(),
+    )
+
+
+def to_invoice(w: InvoiceWire, currency: str) -> Invoice:
+    return Invoice(
+        invoice_id=w.id,
+        invoice_number=InvoiceNumber(w.invoice_number) if w.invoice_number.strip() else None,
+        invoice_type=w.invoice_type,
+        workflow_state=w.workflow_state,
+        dispatch_status=w.dispatch_status,
+        total_amount=_money(w.total_inv_amount, currency),
+        net_amount=_money(w.total_inv_net_amount, currency),
+        copay=_money(w.total_inv_copay, currency),
+        discount=_money(w.total_inv_discount, currency),
+        lines=tuple(to_claim_line(line) for line in w.lines),
+        invoice_date=parse_date(w.invoice_date),
+        extra=w.unmodelled(),
+    )
+
+
+def to_payer_record(w: PayerClaimWire) -> PayerClaimRecord:
+    return PayerClaimRecord(
+        guid=w.guid,
+        provider_claim_no=w.provider_claim_no,
+        tracking_number=w.tracking_number,
+        workflow_state=w.workflow_state,
+        workflow_display_name=w.workflow_display_name,
+        claim_type=w.claim_type,
+        is_inpatient=w.is_inpatient,
+        proposed_value=_money(w.proposed_value),
+        proposed_value_less_copays=_money(w.proposed_value_less_copays),
+        total_copay=_money(w.total_copay_value),
+        member_name=w.member_name,
+        member_number=w.member_number,
+        scheme_name=w.scheme_name,
+        created=parse_datetime(w.created),
+        extra=w.unmodelled(),
+    )
 
 
 # ── helpers ──

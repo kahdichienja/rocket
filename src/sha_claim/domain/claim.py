@@ -80,6 +80,24 @@ class ClaimAttachment:
 
 
 @dataclass(frozen=True, slots=True)
+class Invoice:
+    """An invoice inside a virtual claim (lines are grouped by invoice on the server side)."""
+
+    invoice_id: str
+    invoice_number: InvoiceNumber | None
+    invoice_type: str
+    workflow_state: str
+    dispatch_status: str
+    total_amount: Money | None
+    net_amount: Money | None
+    copay: Money | None = None
+    discount: Money | None = None
+    lines: tuple[ClaimLine, ...] = ()
+    invoice_date: date | None = None
+    extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
 class VirtualClaim:
     consent_token: ConsentToken
     guid: ClaimGuid | None
@@ -104,6 +122,7 @@ class VirtualClaim:
     interventions: tuple[ClaimIntervention, ...] = ()
     diagnoses: tuple[ClaimDiagnosis, ...] = ()
     attachments: tuple[ClaimAttachment, ...] = ()
+    invoices: tuple[Invoice, ...] = ()
     is_negative: bool = False
     is_zero: bool = False
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
@@ -114,6 +133,10 @@ class VirtualClaim:
 
     def diagnoses_for(self, intervention: InterventionCode) -> tuple[ClaimDiagnosis, ...]:
         return tuple(d for d in self.diagnoses if d.intervention_code == intervention)
+
+    @property
+    def lines(self) -> tuple[ClaimLine, ...]:
+        return tuple(line for invoice in self.invoices for line in invoice.lines)
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,10 +179,24 @@ class LineEdit:
 
 @dataclass(frozen=True, slots=True)
 class PayerClaimRecord:
-    """A row from `GET /claims/preview/payer`. Inner schema is undocumented; fields surface via `extra`."""
+    """A row from `GET /claims/preview/payer` — the claim as the payer's system sees it (camelCase on the wire)."""
 
+    guid: str
+    provider_claim_no: str
+    tracking_number: str
+    workflow_state: str
+    workflow_display_name: str
+    claim_type: str
+    is_inpatient: bool
+    proposed_value: Money | None
+    proposed_value_less_copays: Money | None
+    total_copay: Money | None
+    member_name: str = ""
+    member_number: str = ""
+    scheme_name: str = ""
+    created: datetime | None = None
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @property
     def status(self) -> str:
-        return str(self.extra.get("status") or self.extra.get("workflow_state") or "")
+        return self.workflow_display_name or self.workflow_state

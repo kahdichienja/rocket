@@ -10,11 +10,14 @@ published to PyPI so other facilities/HMIS vendors can use it.
 - How the endpoints chain into claim workflows: [docs/api/WORKFLOWS.md](docs/api/WORKFLOWS.md)
 
 **Status 2026-09-20:** docs captured, architecture revised (not FHIR; server-owned virtual claim keyed by `consent_token`).
-**Implemented: 24 of 49 endpoints.** Live-verified on DHA UAT: auth, eligibility, benefits/sub-benefits/interventions,
+**Implemented: 30 of 49 endpoints.** Live-verified on DHA UAT: auth, eligibility, benefits/sub-benefits/interventions,
 consent (authorize / get / reject). Contract-tested against documented shapes (live blocked by Q11): `claims.open_visit`
-and the whole `ClaimSession` — interventions, diagnoses, lines, attachments, preview, submit, close, payer status.
-Gates green: ruff, mypy --strict, import-linter, 140 tests / 95.6 % coverage. **Next:** pre-authorisation group, then
-live-verify the claim flow the moment a UAT beneficiary with a reachable phone exists.
+and the whole `ClaimSession` — interventions, diagnoses, lines, attachments, preview, submit, close, payer status,
+pre-authorisation (create / list / remove diagnosis / remove doctor / cancel) and doctor consent.
+Every response schema is validated against the portal's own example JSON (`docs/api/spec/examples.json`).
+Gates green: ruff, mypy --strict, import-linter, 181 tests / 95.6 % coverage. **Next:** inpatient discharge + next of kin,
+then live-verify the claim flow the moment a UAT beneficiary with a reachable phone exists (Q11). Emergency/EMT and
+ePrescriptions remain v2.
 
 ---
 
@@ -60,14 +63,14 @@ No phase starts coding until its domain vocabulary is confirmed against the offi
 - [x] Codes & enums: `Icd11Code`, `InterventionCode`, `SchemeCode`, `DocumentType`, `RegulationBody`, `ServiceType`,
       `CancelReason`, `DischargeReason`, `IdentificationType`, `NextOfKinIdType` (values from WORKFLOWS §8)
 - [x] `Money` (Decimal, KES) with quantisation policy
-- [~] Read models: `Eligibility` ✔, `Authorization` ✔, `BenefitPackage`/`SubBenefit`/`InterventionCoverage` ✔, `VirtualClaim` ✔ (fields from docs; values unobserved), `Preauthorization` pending
+- [x] Read models: `Eligibility`, `Authorization`, `BenefitPackage`/`SubBenefit`/`InterventionCoverage`, `VirtualClaim` (+ `ClaimIntervention/Diagnosis/Line/Attachment`), `Preauthorization` — claim/preauth field *values* still unobserved on UAT
 - [x] `LenientStrEnum` with unknown-value fallback (`EligibilityStatus`, `CoverageStatus`; more as observed) (`WorkflowState`, `AuthorizationStatus`, `PreauthStatus`)
 - [~] Request validation lives in value-object/command `__post_init__` and use cases (decision: no separate policy module until a cross-field rule needs one)
 - [x] Property-based tests (hypothesis) for Money; table tests for VOs
 
 ### Phase 2 — Ports & Use Cases  `[ ]`
 - [~] Ports (`typing.Protocol`, split by consumer): `EligibilityCheck`/`EligibilityGateway` ✔, `ConsentGateway` ✔, `VisitOpener`/`ClaimSubmitter`/`VirtualClaimGateway` ✔,
-      `TokenProvider` ✔, `Clock` ✔; `PreauthGateway`, `FileGateway` pending
+      `PreauthGateway` ✔, `TokenProvider` ✔, `Clock` ✔; `FileGateway` (uploads) deferred — attachments go inline
 - [~] Use cases: `VerifyEligibility` ✔, `CaptureConsent` ✔, `OpenVisit` ✔, `SubmitClaim` ✔ (attempt-once + `SubmissionOutcomeUnknownError`), `CaptureConsent`, `OpenVisit`, `Add/Remove{Intervention,Diagnosis,Line,Attachment}`,
       `PreviewClaim`, `SubmitClaim` (attempt-once + `SubmissionOutcomeUnknownError`), `CloseClaim`, `DischargeInpatient`,
       `TrackPayerClaim`, `RequestPreauthorization`
@@ -116,7 +119,7 @@ Still open — detailed in [docs/api/WORKFLOWS.md §9](docs/api/WORKFLOWS.md#9-o
 |---|----------|--------|
 | Q1 | ~~visit OTP~~ **closed:** `authorize` (no otp) creates a PENDING authorization and sends the OTP; `visit` verifies (WORKFLOWS §9) | — |
 | Q2 | ~~biometric GUID field~~ **closed:** `visit` accepts `otp` \| `auth_guid` \| `match_id` | — |
-| Q3 | Inner schema of all `object[]` fields (preauth items/doctors/…, claim lines/invoices) | typed models vs `dict` passthrough in Phase 3 |
+| Q3 | ~~Response side~~ answered by the portal examples and modelled (`Invoice`, `PayerClaimRecord`, …). **Request side** for preauth `items/diagnoses/doctors/attachments` is still `[{}]` in the portal; encoded in `requests.create_preauth` with the API's own vocabulary — one function to fix. | first live preauth call |
 | Q4 | Status vocabularies (`workflow_state`, `claim_auth_status`, preauth `status`, …) | enum values (fallback `Unknown` ships regardless) |
 | Q5 | Is `POST /claims/submit` idempotent per `consent_token`? | whether submit may ever be retried |
 | Q6 | Production base URL, token TTL, rate limits | settings, backoff tuning |

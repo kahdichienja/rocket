@@ -16,10 +16,12 @@ from sha_claim.adapters.wire.schemas.claim import (
     ClaimDiagnosisWire,
     ClaimInterventionWire,
     ClaimLineWire,
+    PayerClaimWire,
     VirtualClaimWire,
 )
 from sha_claim.adapters.wire.schemas.common import Page
 from sha_claim.adapters.wire.schemas.eligibility import EligibilityWire
+from sha_claim.adapters.wire.schemas.preauth import DoctorConsentWire, PreauthorizationWire
 from sha_claim.adapters.wire.transport import Transport, WireResponse
 from sha_claim.domain.attachments import Attachment
 from sha_claim.domain.benefits import BenefitPackage, InterventionCoverage, SubBenefit
@@ -45,6 +47,7 @@ from sha_claim.domain.identifiers import (
     LineGuid,
     PatientId,
 )
+from sha_claim.domain.preauth import DoctorConsentRequest, Preauthorization, PreauthRequest
 from sha_claim.errors import UnexpectedResponseError
 
 M = TypeVar("M", bound=BaseModel)
@@ -193,6 +196,52 @@ class HttpVirtualClaimGateway:
 
     async def payer_status(self, claim: ClaimGuid, provider_claim_no: str) -> tuple[PayerClaimRecord, ...]:
         page = parse_as(
-            Page[dict[str, Any]], await self._transport.send(requests.payer_status(claim, provider_claim_no))
+            Page[PayerClaimWire], await self._transport.send(requests.payer_status(claim, provider_claim_no))
         )
         return tuple(mappers.to_payer_record(r) for r in page.results)
+
+
+class HttpPreauthGateway:
+    def __init__(self, transport: Transport) -> None:
+        self._transport = transport
+
+    async def create(self, token: ConsentToken, request: PreauthRequest) -> Preauthorization:
+        response = await self._transport.send(requests.create_preauth(token, request))
+        return mappers.to_preauthorization(parse_as(PreauthorizationWire, response))
+
+    async def list(self, token: ConsentToken) -> tuple[Preauthorization, ...]:
+        response = await self._transport.send(requests.list_preauths(token))
+        raise_for_status(response)
+        payload = response.json()
+        # Observed on UAT: a page `{pageSize, results}`; the portal documents a bare object. Accept both.
+        if isinstance(payload, dict) and "results" in payload:
+            page = parse_as(Page[PreauthorizationWire], response)
+            return tuple(mappers.to_preauthorization(p) for p in page.results)
+        if isinstance(payload, list):
+            return tuple(mappers.to_preauthorization(PreauthorizationWire.model_validate(p)) for p in payload)
+        if payload:
+            return (mappers.to_preauthorization(PreauthorizationWire.model_validate(payload)),)
+        return ()
+
+    async def remove_diagnosis(
+        self, token: ConsentToken, icd: Icd11Code, intervention: InterventionCode
+    ) -> Preauthorization:
+        response = await self._transport.send(requests.remove_preauth_diagnosis(token, icd, intervention))
+        return mappers.to_preauthorization(parse_as(PreauthorizationWire, response))
+
+    async def remove_doctor(
+        self, token: ConsentToken, intervention: InterventionCode, registration_number: str
+    ) -> None:
+        raise_for_status(
+            await self._transport.send(
+                requests.remove_preauth_doctor(token, intervention, registration_number)
+            )
+        )
+
+    async def cancel(self, token: ConsentToken, intervention: InterventionCode) -> Preauthorization:
+        response = await self._transport.send(requests.cancel_preauth(token, intervention))
+        return mappers.to_preauthorization(parse_as(PreauthorizationWire, response))
+
+    async def request_doctor_consent(self, token: ConsentToken, request: DoctorConsentRequest) -> str:
+        response = await self._transport.send(requests.doctor_consent(token, request))
+        return parse_as(DoctorConsentWire, response).message

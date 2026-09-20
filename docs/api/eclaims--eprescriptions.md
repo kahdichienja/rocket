@@ -29,6 +29,15 @@ Fetches a preview of a prescription using a consent token
 |---|---|---|---|
 | `consent_token` | string | **yes** | Consent token |
 
+<details><summary>curl</summary>
+
+```bash
+curl --request GET \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/prescriptions?consent_token=%3Cconsent_token%3E' \
+  --header 'Authorization: Bearer <token>'
+```
+</details>
+
 **Responses**
 
 <details><summary><code>200</code> — Prescription preview fetched successfully</summary>
@@ -46,6 +55,117 @@ Fetches a preview of a prescription using a consent token
 | `replicated` | string | no |  |
 | `status` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "authorization": {
+    "authCode": "authCode",
+    "beneficiaryCode": "beneficiaryCode",
+    "beneficiaryName": "beneficiaryName",
+    "beneficiaryNumber": "beneficiaryNumber",
+    "expiry": "expiry",
+    "guid": "guid",
+    "id": 0,
+    "payerName": "payerName",
+    "providerName": "providerName",
+    "replicated": "replicated",
+    "status": "status",
+    "token": "token"
+  },
+  "beneficiary": {
+    "age": 0,
+    "beneficiaryCode": "beneficiaryCode",
+    "contacts": [
+      {
+        "active": true,
+        "contactType": "contactType",
+        "contactValue": "contactValue",
+        "id": 0,
+        "isMainContact": true,
+        "ownerType": "ownerType"
+      }
+    ],
+    "dob": "dob",
+    "gender": "gender",
+    "guid": "guid",
+    "id": 0,
+    "identifiers": [
+      {
+        "id": 0,
+        "identifier": "identifier",
+        "identifierType": "identifierType",
+        "isMainIdentifier": true
+      }
+    ],
+    "isPrincipal": true,
+    "mainIdentifier": "mainIdentifier",
+    "names": "names"
+  },
+  "code": "code",
+  "doctorReviewStatus": "doctorReviewStatus",
+  "dosage": [
+    {
+      "doseQuantity": "doseQuantity",
+      "doseUnit": "doseUnit",
+      "duration": "duration",
+      "durationUnit": "durationUnit",
+      "endDate": "endDate",
+      "frequency": 0,
+      "guid": "guid",
+      "id": 0,
+      "medication": "medication",
+      "medicationIdentifier": "medicationIdentifier",
+      "medicationPrice": 0,
+      "patientInstruction": "patientInstruction",
+      "periodUnit": "periodUnit",
+      "practitionerId": "practitionerId",
+      "prescription": 0,
+      "replicated": "replicated",
+      "route": "route",
+      "routeCode": "routeCode",
+      "startDate": "startDate"
+    }
+  ],
+  "guid": "guid",
+  "id": 0,
+  "intervention": {
+    "accessPoint": "accessPoint",
+    "active": true,
+    "activeForUhc": true,
+    "applicableFacilityOwnership": "applicableFacilityOwnership",
+    "applicableGender": "applicableGender",
+    "applicableSchemes": [
+      "string"
+    ],
+    "benefit": 0,
+    "benefitCode": "benefitCode",
+    "benefitName": "benefitName",
+    "code": "code",
+    "coverageLevel": "coverageLevel",
+    "fund": "fund",
+    "guid": "guid",
+    "id": 0,
+    "levelsApplicable": [
+      "string"
+    ],
+    "name": "name",
+    "packageCombinations": [
+      "string"
+    ],
+    "parentBenefitCode": "parentBenefitCode",
+    "parentBenefitName": "parentBenefitName",
+    "paymentMechanism": "paymentMechanism",
+    "replicated": "replicated",
+    "status": "status",
+    "supportedScheme": "supportedScheme"
+  },
+  "replicated": "replicated",
+  "status": "status"
+}
+```
+
 </details>
 
 <details><summary><code>400</code> — Invalid request</summary>
@@ -54,6 +174,16 @@ Fetches a preview of a prescription using a consent token
 |---|---|---|---|
 | `error` | string | no |  |
 | `message` | string | no |  |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -64,6 +194,16 @@ Fetches a preview of a prescription using a consent token
 | `error` | string | no |  |
 | `message` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>403</code> — Forbidden</summary>
@@ -73,6 +213,16 @@ Fetches a preview of a prescription using a consent token
 | `error` | string | no |  |
 | `message` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal server error</summary>
@@ -81,6 +231,16 @@ Fetches a preview of a prescription using a consent token
 |---|---|---|---|
 | `error` | string | no |  |
 | `message` | string | no |  |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -108,6 +268,71 @@ Create prescription payload
 | `items` | object[] | **yes** | List of prescribed medication items |
 | `regulation_body` | string | no | Regulation body e.g. 'KMPDC', 'COC', 'NCK' |
 
+<details><summary>Example request body</summary>
+
+```json
+{
+  "consent_token": "consent_token",
+  "identification_number": "identification_number",
+  "identification_type": "identification_type",
+  "intervention_code": "intervention_code",
+  "items": [
+    {
+      "additional_instruction": "additional_instruction",
+      "dose_quantity": 0,
+      "dose_unit": "dose_unit",
+      "duration": 0,
+      "duration_unit": "duration_unit",
+      "end_date": "end_date",
+      "frequency": 0,
+      "generic_concept_code": "generic_concept_code",
+      "needs_refill": true,
+      "patient_instruction": "patient_instruction",
+      "period_unit": "period_unit",
+      "refill_count": 0,
+      "start_date": "start_date"
+    }
+  ],
+  "regulation_body": "regulation_body"
+}
+```
+
+</details>
+
+<details><summary>curl</summary>
+
+```bash
+curl --request POST \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/prescriptions' \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "consent_token": "consent_token",
+  "identification_number": "identification_number",
+  "identification_type": "identification_type",
+  "intervention_code": "intervention_code",
+  "items": [
+    {
+      "additional_instruction": "additional_instruction",
+      "dose_quantity": 0,
+      "dose_unit": "dose_unit",
+      "duration": 0,
+      "duration_unit": "duration_unit",
+      "end_date": "end_date",
+      "frequency": 0,
+      "generic_concept_code": "generic_concept_code",
+      "needs_refill": true,
+      "patient_instruction": "patient_instruction",
+      "period_unit": "period_unit",
+      "refill_count": 0,
+      "start_date": "start_date"
+    }
+  ],
+  "regulation_body": "regulation_body"
+}'
+```
+</details>
+
 **Responses**
 
 <details><summary><code>200</code> — Prescription created successfully</summary>
@@ -125,6 +350,117 @@ Create prescription payload
 | `replicated` | string | no |  |
 | `status` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "authorization": {
+    "authCode": "authCode",
+    "beneficiaryCode": "beneficiaryCode",
+    "beneficiaryName": "beneficiaryName",
+    "beneficiaryNumber": "beneficiaryNumber",
+    "expiry": "expiry",
+    "guid": "guid",
+    "id": 0,
+    "payerName": "payerName",
+    "providerName": "providerName",
+    "replicated": "replicated",
+    "status": "status",
+    "token": "token"
+  },
+  "beneficiary": {
+    "age": 0,
+    "beneficiaryCode": "beneficiaryCode",
+    "contacts": [
+      {
+        "active": true,
+        "contactType": "contactType",
+        "contactValue": "contactValue",
+        "id": 0,
+        "isMainContact": true,
+        "ownerType": "ownerType"
+      }
+    ],
+    "dob": "dob",
+    "gender": "gender",
+    "guid": "guid",
+    "id": 0,
+    "identifiers": [
+      {
+        "id": 0,
+        "identifier": "identifier",
+        "identifierType": "identifierType",
+        "isMainIdentifier": true
+      }
+    ],
+    "isPrincipal": true,
+    "mainIdentifier": "mainIdentifier",
+    "names": "names"
+  },
+  "code": "code",
+  "doctorReviewStatus": "doctorReviewStatus",
+  "dosage": [
+    {
+      "doseQuantity": "doseQuantity",
+      "doseUnit": "doseUnit",
+      "duration": "duration",
+      "durationUnit": "durationUnit",
+      "endDate": "endDate",
+      "frequency": 0,
+      "guid": "guid",
+      "id": 0,
+      "medication": "medication",
+      "medicationIdentifier": "medicationIdentifier",
+      "medicationPrice": 0,
+      "patientInstruction": "patientInstruction",
+      "periodUnit": "periodUnit",
+      "practitionerId": "practitionerId",
+      "prescription": 0,
+      "replicated": "replicated",
+      "route": "route",
+      "routeCode": "routeCode",
+      "startDate": "startDate"
+    }
+  ],
+  "guid": "guid",
+  "id": 0,
+  "intervention": {
+    "accessPoint": "accessPoint",
+    "active": true,
+    "activeForUhc": true,
+    "applicableFacilityOwnership": "applicableFacilityOwnership",
+    "applicableGender": "applicableGender",
+    "applicableSchemes": [
+      "string"
+    ],
+    "benefit": 0,
+    "benefitCode": "benefitCode",
+    "benefitName": "benefitName",
+    "code": "code",
+    "coverageLevel": "coverageLevel",
+    "fund": "fund",
+    "guid": "guid",
+    "id": 0,
+    "levelsApplicable": [
+      "string"
+    ],
+    "name": "name",
+    "packageCombinations": [
+      "string"
+    ],
+    "parentBenefitCode": "parentBenefitCode",
+    "parentBenefitName": "parentBenefitName",
+    "paymentMechanism": "paymentMechanism",
+    "replicated": "replicated",
+    "status": "status",
+    "supportedScheme": "supportedScheme"
+  },
+  "replicated": "replicated",
+  "status": "status"
+}
+```
+
 </details>
 
 <details><summary><code>400</code> — Invalid request</summary>
@@ -133,6 +469,16 @@ Create prescription payload
 |---|---|---|---|
 | `error` | string | no |  |
 | `message` | string | no |  |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -143,6 +489,16 @@ Create prescription payload
 | `error` | string | no |  |
 | `message` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>403</code> — Forbidden</summary>
@@ -152,6 +508,16 @@ Create prescription payload
 | `error` | string | no |  |
 | `message` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal server error</summary>
@@ -160,6 +526,16 @@ Create prescription payload
 |---|---|---|---|
 | `error` | string | no |  |
 | `message` | string | no |  |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -185,6 +561,57 @@ Create dispense payload
 | `doctors` | object[] | **yes** | Information from the healthcare professional dispensing the drug |
 | `intervention_code` | string | **yes** | Intervention code |
 
+<details><summary>Example request body</summary>
+
+```json
+{
+  "actual_products": [
+    {
+      "actual_product_code": "actual_product_code",
+      "medication_price": 0,
+      "total_quantity": 0
+    }
+  ],
+  "consent_token": "consent_token",
+  "doctors": [
+    {
+      "identification_number": "identification_number",
+      "identification_type": "identification_type"
+    }
+  ],
+  "intervention_code": "intervention_code"
+}
+```
+
+</details>
+
+<details><summary>curl</summary>
+
+```bash
+curl --request POST \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/prescriptions/dispenses' \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "actual_products": [
+    {
+      "actual_product_code": "actual_product_code",
+      "medication_price": 0,
+      "total_quantity": 0
+    }
+  ],
+  "consent_token": "consent_token",
+  "doctors": [
+    {
+      "identification_number": "identification_number",
+      "identification_type": "identification_type"
+    }
+  ],
+  "intervention_code": "intervention_code"
+}'
+```
+</details>
+
 **Responses**
 
 <details><summary><code>200</code> — Dispense created successfully</summary>
@@ -197,6 +624,140 @@ Create dispense payload
 | `prescription` | object | no |  |
 | `status` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "dispenseDosages": [
+    {
+      "dispense": 0,
+      "doseQuantity": 0,
+      "doseUnit": "doseUnit",
+      "duration": "duration",
+      "durationUnit": "durationUnit",
+      "endDate": "endDate",
+      "frequency": 0,
+      "genericDosageInstruction": 0,
+      "guid": "guid",
+      "id": 0,
+      "medication": "medication",
+      "medicationIdentifier": "medicationIdentifier",
+      "medicationPrice": "medicationPrice",
+      "medicationRequestId": "medicationRequestId",
+      "periodUnit": "periodUnit",
+      "practitionerId": "practitionerId",
+      "route": "route",
+      "routeCode": "routeCode",
+      "startDate": "startDate",
+      "status": "status",
+      "totalQuantity": "totalQuantity"
+    }
+  ],
+  "dispensingDoctors": [
+    {
+      "dispense": 0,
+      "id": 0
+    }
+  ],
+  "id": 0,
+  "prescription": {
+    "authorization": {
+      "authCode": "authCode",
+      "beneficiaryCode": "beneficiaryCode",
+      "beneficiaryName": "beneficiaryName",
+      "beneficiaryNumber": "beneficiaryNumber",
+      "expiry": "expiry",
+      "guid": "guid",
+      "id": 0,
+      "payerName": "payerName",
+      "providerName": "providerName",
+      "replicated": "replicated",
+      "status": "status",
+      "token": "token"
+    },
+    "beneficiary": {
+      "age": 0,
+      "beneficiaryCode": "beneficiaryCode",
+      "contacts": [
+        {}
+      ],
+      "dob": "dob",
+      "gender": "gender",
+      "guid": "guid",
+      "id": 0,
+      "identifiers": [
+        {}
+      ],
+      "isPrincipal": true,
+      "mainIdentifier": "mainIdentifier",
+      "names": "names"
+    },
+    "code": "code",
+    "doctorReviewStatus": "doctorReviewStatus",
+    "dosage": [
+      {
+        "doseQuantity": "doseQuantity",
+        "doseUnit": "doseUnit",
+        "duration": "duration",
+        "durationUnit": "durationUnit",
+        "endDate": "endDate",
+        "frequency": 0,
+        "guid": "guid",
+        "id": 0,
+        "medication": "medication",
+        "medicationIdentifier": "medicationIdentifier",
+        "medicationPrice": 0,
+        "patientInstruction": "patientInstruction",
+        "periodUnit": "periodUnit",
+        "practitionerId": "practitionerId",
+        "prescription": 0,
+        "replicated": "replicated",
+        "route": "route",
+        "routeCode": "routeCode",
+        "startDate": "startDate"
+      }
+    ],
+    "guid": "guid",
+    "id": 0,
+    "intervention": {
+      "accessPoint": "accessPoint",
+      "active": true,
+      "activeForUhc": true,
+      "applicableFacilityOwnership": "applicableFacilityOwnership",
+      "applicableGender": "applicableGender",
+      "applicableSchemes": [
+        "string"
+      ],
+      "benefit": 0,
+      "benefitCode": "benefitCode",
+      "benefitName": "benefitName",
+      "code": "code",
+      "coverageLevel": "coverageLevel",
+      "fund": "fund",
+      "guid": "guid",
+      "id": 0,
+      "levelsApplicable": [
+        "string"
+      ],
+      "name": "name",
+      "packageCombinations": [
+        "string"
+      ],
+      "parentBenefitCode": "parentBenefitCode",
+      "parentBenefitName": "parentBenefitName",
+      "paymentMechanism": "paymentMechanism",
+      "replicated": "replicated",
+      "status": "status",
+      "supportedScheme": "supportedScheme"
+    },
+    "replicated": "replicated",
+    "status": "status"
+  },
+  "status": "status"
+}
+```
+
 </details>
 
 <details><summary><code>400</code> — Invalid request</summary>
@@ -205,6 +766,16 @@ Create dispense payload
 |---|---|---|---|
 | `error` | string | no |  |
 | `message` | string | no |  |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -215,6 +786,16 @@ Create dispense payload
 | `error` | string | no |  |
 | `message` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>403</code> — Forbidden</summary>
@@ -224,6 +805,16 @@ Create dispense payload
 | `error` | string | no |  |
 | `message` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal server error</summary>
@@ -232,6 +823,16 @@ Create dispense payload
 |---|---|---|---|
 | `error` | string | no |  |
 | `message` | string | no |  |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -256,11 +857,45 @@ Remove prescription doctor payload
 | `intervention_code` | string | **yes** | Intervention code |
 | `practitioner_registration_number` | string | **yes** | Registration number of the practitioner to remove |
 
+<details><summary>Example request body</summary>
+
+```json
+{
+  "consent_token": "consent_token",
+  "intervention_code": "intervention_code",
+  "practitioner_registration_number": "practitioner_registration_number"
+}
+```
+
+</details>
+
+<details><summary>curl</summary>
+
+```bash
+curl --request DELETE \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/prescriptions/doctors' \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "consent_token": "consent_token",
+  "intervention_code": "intervention_code",
+  "practitioner_registration_number": "practitioner_registration_number"
+}'
+```
+</details>
+
 **Responses**
 
 <details><summary><code>200</code> — Doctor prescription successfully removed</summary>
 
 _none_
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{}
+```
 
 </details>
 
@@ -271,6 +906,16 @@ _none_
 | `error` | string | no |  |
 | `message` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>401</code> — Unauthorized</summary>
@@ -279,6 +924,16 @@ _none_
 |---|---|---|---|
 | `error` | string | no |  |
 | `message` | string | no |  |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -289,6 +944,16 @@ _none_
 | `error` | string | no |  |
 | `message` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal server error</summary>
@@ -297,6 +962,16 @@ _none_
 |---|---|---|---|
 | `error` | string | no |  |
 | `message` | string | no |  |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 

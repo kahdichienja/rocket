@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -19,7 +20,7 @@ from sha_claim.domain.claim import (
     PayerClaimRecord,
     VirtualClaim,
 )
-from sha_claim.domain.codes import DocumentType, Icd11Code, InterventionCode
+from sha_claim.domain.codes import DocumentType, Icd11Code, InterventionCode, RegulationBody
 from sha_claim.domain.consent import ConsentProof
 from sha_claim.domain.enums import CancelReason, ServiceType
 from sha_claim.domain.identifiers import (
@@ -31,6 +32,8 @@ from sha_claim.domain.identifiers import (
     PatientId,
 )
 from sha_claim.domain.money import Money
+from sha_claim.domain.practitioner import PractitionerRef
+from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
 from sha_claim.errors import RequestValidationError, SubmissionOutcomeUnknownError, TransportError
 from sha_claim.session import ClaimSession
 from sha_claim.use_cases.submit_claim import SubmitClaim
@@ -148,12 +151,52 @@ class FakeGateway:
         self, claim_guid: ClaimGuid, provider_claim_no: str
     ) -> tuple[PayerClaimRecord, ...]:
         self._rec("payer_status", claim_guid, provider_claim_no)
-        return (PayerClaimRecord({"status": "RECEIVED"}),)
+        return (
+            PayerClaimRecord("g", provider_claim_no, "TRK", "RECEIVED", "", "OP", False, None, None, None),
+        )
+
+
+class FakePreauths:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[Any, ...]]] = []
+
+    async def create(self, token: ConsentToken, request: PreauthRequest) -> Preauthorization:
+        self.calls.append(("create", (token, request)))
+        return preauth()
+
+    async def list(self, token: ConsentToken) -> tuple[Preauthorization, ...]:
+        self.calls.append(("list", (token,)))
+        return (preauth(),)
+
+    async def remove_diagnosis(
+        self, token: ConsentToken, icd: Icd11Code, intervention: InterventionCode
+    ) -> Preauthorization:
+        self.calls.append(("remove_diagnosis", (token, icd, intervention)))
+        return preauth()
+
+    async def remove_doctor(
+        self, token: ConsentToken, intervention: InterventionCode, registration_number: str
+    ) -> None:
+        self.calls.append(("remove_doctor", (token, intervention, registration_number)))
+
+    async def cancel(self, token: ConsentToken, intervention: InterventionCode) -> Preauthorization:
+        self.calls.append(("cancel", (token, intervention)))
+        return preauth()
+
+    async def request_doctor_consent(self, token: ConsentToken, request: DoctorConsentRequest) -> str:
+        self.calls.append(("doctor_consent", (token, request)))
+        return "sent"
+
+
+def preauth() -> Preauthorization:
+    return Preauthorization(
+        "pg", "pt", CODE, "PENDING", "", True, False, 1, True, False, Money.kes(100), None, None
+    )
 
 
 async def test_session_threads_the_token_and_coerces_strings() -> None:
     gw = FakeGateway()
-    s = ClaimSession(gw, TOKEN)
+    s = ClaimSession(gw, FakePreauths(), TOKEN)
     await s.add_intervention("sha-12-001")
     await s.add_diagnosis("1a00", "SHA-12-001")
     line = await s.add_line("SHA-12-001", Money.kes("100"), 2, diagnoses=["1A00"])
@@ -186,7 +229,7 @@ async def test_session_threads_the_token_and_coerces_strings() -> None:
 
 async def test_session_local_validation_short_circuits() -> None:
     gw = FakeGateway()
-    s = ClaimSession(gw, TOKEN)
+    s = ClaimSession(gw, FakePreauths(), TOKEN)
     with pytest.raises(RequestValidationError, match="quantity"):
         await s.add_line(CODE, Money.kes(1), 0)
     with pytest.raises(RequestValidationError, match="at least one"):
@@ -198,7 +241,7 @@ async def test_session_local_validation_short_circuits() -> None:
 
 async def test_lifecycle_refreshes_snapshot() -> None:
     gw = FakeGateway()
-    s = ClaimSession(gw, TOKEN, claim())
+    s = ClaimSession(gw, FakePreauths(), TOKEN, claim())
     assert (await s.preview()).workflow_state == "PREVIEWED"
     assert (await s.submit("INV-1")).workflow_state == "SUBMITTED"
     assert s.claim is not None and s.claim.workflow_state == "SUBMITTED"
@@ -208,7 +251,7 @@ async def test_lifecycle_refreshes_snapshot() -> None:
 
 async def test_payer_status_previews_first_when_no_guid() -> None:
     gw = FakeGateway()
-    s = ClaimSession(gw, TOKEN)  # resumed from a bare token
+    s = ClaimSession(gw, FakePreauths(), TOKEN)  # resumed from a bare token
     records = await s.payer_status("INV-1")
     assert [c[0] for c in gw.calls] == ["preview", "payer_status"]
     assert records[0].status == "RECEIVED"
@@ -222,3 +265,80 @@ async def test_submit_is_attempted_once_and_ambiguity_is_explicit() -> None:
     assert "preview()" in str(exc.value)
     assert "CR1-TOKEN12345" not in str(exc.value)  # token redacted in the message
     assert len([c for c in gw.calls if c[0] == "submit"]) == 1
+
+
+async def test_preauth_flow_through_session() -> None:
+    gw, pa = FakeGateway(), FakePreauths()
+    s = ClaimSession(gw, pa, TOKEN)
+    doctor = PractitionerRef.registered("A1234", RegulationBody.KMPDC)
+    start = datetime(2026, 9, 20, 8, tzinfo=UTC)
+    created = await s.request_preauth(
+        "sha-08-006",
+        service_start=start,
+        service_end=start.replace(hour=12),
+        items=[PreauthItem("CS", "Cesarean section", 1, Money.kes("30000"))],
+        diagnoses=["JB0Z"],
+        doctors=[doctor],
+        notification_email="claims@facility.example",
+    )
+    assert created.awaiting_doctor and not created.decided
+    assert (await s.preauths())[0].guid == "pg"
+    await s.remove_preauth_diagnosis("JB0Z", "SHA-08-006")
+    await s.remove_preauth_doctor("SHA-08-006", "A1234")
+    await s.cancel_preauth("SHA-08-006")
+    assert await s.request_doctor_consent("SHA-08-006", doctor) == "sent"
+
+    names = [c[0] for c in pa.calls]
+    assert names == ["create", "list", "remove_diagnosis", "remove_doctor", "cancel", "doctor_consent"]
+    request = pa.calls[0][1][1]
+    assert request.intervention_code == InterventionCode(
+        "SHA-08-006"
+    ) and request.estimated_total == Money.kes(30000)
+    assert pa.calls[5][1][1].request_type.value == "PREAUTH_DOCTOR_APPROVAL_REQUEST"
+    assert gw.calls == []
+
+
+async def test_preauth_local_validation() -> None:
+    s = ClaimSession(FakeGateway(), FakePreauths(), TOKEN)
+    start = datetime(2026, 9, 20, 8, tzinfo=UTC)
+    items = [PreauthItem("CS", "x", 1, Money.kes(1))]
+    with pytest.raises(RequestValidationError, match="service_end"):
+        await s.request_preauth(
+            CODE,
+            service_start=start,
+            service_end=start.replace(hour=7),
+            items=items,
+            diagnoses=["JB0Z"],
+            doctors=[],
+            notification_email="a@b.co",
+        )
+    with pytest.raises(RequestValidationError, match="email"):
+        await s.request_preauth(
+            CODE,
+            service_start=start,
+            service_end=start,
+            items=items,
+            diagnoses=["JB0Z"],
+            doctors=[],
+            notification_email="nope",
+        )
+    with pytest.raises(RequestValidationError, match="diagnosis"):
+        await s.request_preauth(
+            CODE,
+            service_start=start,
+            service_end=start,
+            items=items,
+            diagnoses=[],
+            doctors=[],
+            notification_email="a@b.co",
+        )
+    with pytest.raises(RequestValidationError, match="item"):
+        await s.request_preauth(
+            CODE,
+            service_start=start,
+            service_end=start,
+            items=[],
+            diagnoses=["JB0Z"],
+            doctors=[],
+            notification_email="a@b.co",
+        )

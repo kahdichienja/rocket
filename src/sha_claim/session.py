@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from sha_claim.domain.attachments import Attachment
@@ -18,10 +18,13 @@ from sha_claim.domain.claim import (
     VirtualClaim,
 )
 from sha_claim.domain.codes import Icd11Code, InterventionCode, SchemeCode
-from sha_claim.domain.enums import CancelReason
+from sha_claim.domain.enums import CancelReason, DoctorConsentRequestType, ServiceType
 from sha_claim.domain.identifiers import AttachmentId, ConsentToken, InvoiceNumber, LineGuid
 from sha_claim.domain.money import Money
+from sha_claim.domain.practitioner import PractitionerRef
+from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
 from sha_claim.errors import RequestValidationError, Violation
+from sha_claim.ports.preauth_gateway import PreauthGateway
 from sha_claim.ports.virtual_claim_gateway import VirtualClaimGateway
 from sha_claim.use_cases.submit_claim import SubmitClaim
 
@@ -34,9 +37,14 @@ class ClaimSession:
     """
 
     def __init__(
-        self, gateway: VirtualClaimGateway, token: ConsentToken, claim: VirtualClaim | None = None
+        self,
+        gateway: VirtualClaimGateway,
+        preauths: PreauthGateway,
+        token: ConsentToken,
+        claim: VirtualClaim | None = None,
     ) -> None:
         self._gateway = gateway
+        self._preauths = preauths
         self._submit = SubmitClaim(gateway)
         self.consent_token = token
         self.claim = claim
@@ -160,3 +168,70 @@ class ClaimSession:
         if self.claim.guid is None:
             raise RequestValidationError([Violation("claim", "server has not assigned a claim GUID yet")])
         return await self._gateway.payer_status(self.claim.guid, provider_claim_no)
+
+    # ── pre-authorisation ──
+
+    async def request_preauth(
+        self,
+        intervention: InterventionCode | str,
+        *,
+        service_start: datetime,
+        service_end: datetime,
+        items: Sequence[PreauthItem],
+        diagnoses: Sequence[Icd11Code | str],
+        doctors: Sequence[PractitionerRef],
+        notification_email: str,
+        attachments: Sequence[Attachment] = (),
+    ) -> Preauthorization:
+        """`POST /preauths` — file a pre-authorisation for an intervention flagged `needs_preauth`."""
+        try:
+            request = PreauthRequest(
+                intervention_code=InterventionCode.of(intervention),
+                service_start=service_start,
+                service_end=service_end,
+                items=tuple(items),
+                diagnoses=tuple(Icd11Code.of(d) for d in diagnoses),
+                doctors=tuple(doctors),
+                provider_notification_email=notification_email,
+                attachments=tuple(attachments),
+            )
+        except ValueError as exc:
+            raise RequestValidationError([Violation("preauth", str(exc))]) from exc
+        return await self._preauths.create(self.consent_token, request)
+
+    async def preauths(self) -> tuple[Preauthorization, ...]:
+        """`GET /preauths` — pre-authorisations linked to this claim."""
+        return await self._preauths.list(self.consent_token)
+
+    async def remove_preauth_diagnosis(
+        self, icd: Icd11Code | str, intervention: InterventionCode | str
+    ) -> Preauthorization:
+        return await self._preauths.remove_diagnosis(
+            self.consent_token, Icd11Code.of(icd), InterventionCode.of(intervention)
+        )
+
+    async def remove_preauth_doctor(
+        self, intervention: InterventionCode | str, registration_number: str
+    ) -> None:
+        """Only possible before the pre-authorisation is submitted."""
+        await self._preauths.remove_doctor(
+            self.consent_token, InterventionCode.of(intervention), registration_number
+        )
+
+    async def cancel_preauth(self, intervention: InterventionCode | str) -> Preauthorization:
+        return await self._preauths.cancel(self.consent_token, InterventionCode.of(intervention))
+
+    async def request_doctor_consent(
+        self,
+        intervention: InterventionCode | str,
+        practitioner: PractitionerRef,
+        *,
+        request_type: DoctorConsentRequestType = DoctorConsentRequestType.PREAUTH_DOCTOR_APPROVAL,
+        service_type: ServiceType | None = None,
+        emergency_claim_id: str | None = None,
+    ) -> str:
+        """`POST /claims/doctor-consent` — ask a doctor to approve a pre-auth / emergency claim / prescription."""
+        request = DoctorConsentRequest(
+            InterventionCode.of(intervention), request_type, practitioner, service_type, emergency_claim_id
+        )
+        return await self._preauths.request_doctor_consent(self.consent_token, request)

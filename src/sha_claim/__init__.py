@@ -8,6 +8,7 @@ from sha_claim.domain.claim import (
     ClaimDiagnosis,
     ClaimIntervention,
     ClaimLine,
+    Invoice,
     LineEdit,
     NewClaimLine,
     PayerClaimRecord,
@@ -21,6 +22,7 @@ from sha_claim.domain.enums import (
     CancelReason,
     CoverageStatus,
     DischargeReason,
+    DoctorConsentRequestType,
     EligibilityStatus,
     IdentificationType,
     PaymentMechanism,
@@ -37,6 +39,7 @@ from sha_claim.domain.identifiers import (
 )
 from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import PractitionerRef
+from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
 from sha_claim.errors import (
     AuthenticationError,
     BadRequestError,
@@ -79,6 +82,8 @@ __all__ = [
     "Coverage",
     "CoverageStatus",
     "DischargeReason",
+    "DoctorConsentRequest",
+    "DoctorConsentRequestType",
     "DocumentType",
     "Eligibility",
     "EligibilityStatus",
@@ -88,6 +93,7 @@ __all__ = [
     "IdentificationType",
     "InterventionCode",
     "InterventionCoverage",
+    "Invoice",
     "InvoiceNumber",
     "LineEdit",
     "LineGuid",
@@ -101,6 +107,9 @@ __all__ = [
     "PaymentMechanism",
     "PermissionDeniedError",
     "PractitionerRef",
+    "PreauthItem",
+    "PreauthRequest",
+    "Preauthorization",
     "RateLimitedError",
     "RegulationBody",
     "RequestValidationError",

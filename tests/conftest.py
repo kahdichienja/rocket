@@ -23,3 +23,7 @@ def load_fixture(name: str) -> Any:
 
 def load_spec(api: str) -> Any:
     return json.loads((SPEC / f"{api}.json").read_text())
+
+
+def load_examples() -> Any:
+    return json.loads((SPEC / "examples.json").read_text())

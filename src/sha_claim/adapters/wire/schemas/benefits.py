@@ -29,7 +29,7 @@ class InterventionWire(WireModel):
     needs_preauth: bool = False
     needs_manual_preauth_approval: bool = False
     needs_doctor_authorization: bool = False
-    overall_tariff: str | None = None
+    overall_tariff: str | float | int | None = None  # UAT sends "0", the portal example sends 0
     fund: str = ""
     sub_benefit_code: str = ""
     applicable_schemes: list[str] = Field(default_factory=list)

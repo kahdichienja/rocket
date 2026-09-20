@@ -13,5 +13,6 @@ Generated from `docs/api/spec/*.json` (the official portal spec). Regenerate whe
 4. Try **Eligibility → GET /api/v1/patients/eligibility** with
    `identification_number=00000000`, `identification_type=National ID` — the UAT synthetic member.
 
-Optional query params are present but disabled; enable as needed. `object[]` fields are `[]`
-placeholders because the portal does not publish their inner schema (WORKFLOWS.md Q3).
+Optional query params are present but disabled; enable as needed. Request bodies are the portal's own examples
+(`docs/api/spec/examples.json`); `object[]` fields still show `[{}]` because the portal does not publish their inner
+schema (WORKFLOWS.md Q3).

@@ -66,6 +66,38 @@ class ClaimAttachmentWire(WireModel):
     description: str = ""
 
 
+class InvoiceWire(WireModel):
+    id: str = ""
+    invoice_number: str = ""
+    invoice_type: str = ""
+    invoice_date: str = ""
+    workflow_state: str = ""
+    dispatch_status: str = ""
+    total_inv_amount: Number = None
+    total_inv_net_amount: Number = None
+    total_inv_copay: Number = None
+    total_inv_discount: Number = None
+    lines: list[ClaimLineWire] = Field(default_factory=list)
+
+
+class PayerClaimWire(WireModel):
+    id: int | str | None = None
+    guid: str = ""
+    provider_claim_no: str = ""
+    tracking_number: str = ""
+    workflow_state: str = ""
+    workflow_display_name: str = ""
+    claim_type: str = ""
+    is_inpatient: bool = False
+    proposed_value: Number = None
+    proposed_value_less_copays: Number = None
+    total_copay_value: Number = None
+    member_name: str = ""
+    member_number: str = ""
+    scheme_name: str = ""
+    created: str = ""
+
+
 class VirtualClaimWire(WireModel):
     """Response of /claims/visit, /claims/preview, /claims/submit, /claims/close (snake_case on the wire)."""
 
@@ -94,3 +126,4 @@ class VirtualClaimWire(WireModel):
     interventions: list[ClaimInterventionWire] = Field(default_factory=list)
     claim_diagnoses: list[ClaimDiagnosisWire] = Field(default_factory=list)
     claim_attachments: list[ClaimAttachmentWire] = Field(default_factory=list)
+    invoices: list[InvoiceWire] = Field(default_factory=list)

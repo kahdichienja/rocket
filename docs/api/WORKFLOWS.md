@@ -102,6 +102,10 @@ DELETE /preauths/diagnoses/{icd_code}   DELETE /preauths/doctors   POST /preauth
 Poll:   GET /preauths?consent_token
 ```
 Inner schema of `items[]`, `diagnoses[]`, `doctors[]`, `attachments[]` is **not exposed** by the portal (flattened) — Q3.
+The SDK's working assumption (`requests.create_preauth`): JSON strings in form fields, `items` as
+`{item_code, item_name, quantity, unit_price}`, `diagnoses` as `{icd_code}`, `doctors` as the practitioner fields used by
+`/claims/doctor-consent`, `attachments` as `{field, document_type, title}` where `field` names a multipart file part
+(the convention `/claims/emt` documents). Unverified until a live preauth call succeeds.
 
 ## 5. Emergency
 
@@ -185,7 +189,7 @@ Claim attachments can also be sent inline via `POST /claims/attachments`.
 |---|---|---|
 | Q1 | **Closed (UAT 2026-09-20):** two-step. `authorize` without `otp` → PENDING authorization + OTP sent; `visit` verifies. See §9. | — |
 | Q2 | **Closed:** `visit` takes one of `otp`, `auth_guid`, `match_id`. | — |
-| Q3 | Inner schema of `object[]` fields: preauth `items/diagnoses/doctors/attachments`, prescription `items`, dispense `actual_products/doctors`, and `claim_diagnoses`, `interventions`, `invoices` in claim responses. | Typed models vs `dict` passthrough |
+| Q3 | **Response side answered** by the portal examples (`spec/examples.json`, 2026-09-20): `invoices[].lines[]`, `claim_diagnoses[]`, `interventions[]`, `preauthItems[]`, `preauthDoctors[].doctorProfile`, payer `results[]` are all modelled now. **Request side still open** for preauth `items/diagnoses/doctors/attachments` (the example shows `[{}]`). Prescription `items[]` and dispense `actual_products[]/doctors[]` *are* published (see eprescriptions docs). | preauth request encoding |
 | Q4 | Vocabulary of `workflow_state`, `claim_auth_status`, `resubmission_workflow_state`, authorization `status`, preauth `status`/`doctorReviewStatus`, eligibility `statusCode`. | Status enums; must include `Unknown(raw)` fallback |
 | Q5 | Is `POST /claims/submit` idempotent for the same `consent_token`? What happens on a retried submit after a timeout? | Retry policy for the one call that moves money |
 | Q6 | Production base URL and rate limits. ~~Token TTL~~ observed 3600 s. | Settings + backoff tuning |

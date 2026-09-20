@@ -49,7 +49,15 @@ asyncio.run(main())
 ### A claim, end to end
 
 ```python
-from sha_claim import AsyncSHAClient, Money, Otp, ServiceType, DocumentType, Attachment, SubmissionOutcomeUnknownError
+from sha_claim import (
+    AsyncSHAClient,
+    Money,
+    Otp,
+    ServiceType,
+    DocumentType,
+    Attachment,
+    SubmissionOutcomeUnknownError,
+)
 
 async with AsyncSHAClient.from_env() as sha:
     patient = (await sha.eligibility.check("12345678", IdentificationType.NATIONAL_ID)).patient_id
@@ -57,10 +65,14 @@ async with AsyncSHAClient.from_env() as sha:
     consultation = next(c for c in coverage if c.name == "Consultation")
 
     # 1. consent: this sends the OTP to the beneficiary's registered phone
-    auth = await sha.consent.authorize(patient, consultation.service_type_for_authorization, [consultation.code])
+    auth = await sha.consent.authorize(
+        patient, consultation.service_type_for_authorization, [consultation.code]
+    )
 
     # 2. open the server-side virtual claim with the OTP the patient read out
-    session = await sha.claims.open_visit(patient, consultation.service_type_for_authorization, [consultation.code], Otp("123456"))
+    session = await sha.claims.open_visit(
+        patient, consultation.service_type_for_authorization, [consultation.code], Otp("123456")
+    )
 
     # 3. build it — every call is keyed by the session's consent_token
     await session.add_diagnosis("1A00", consultation.code)
@@ -72,7 +84,7 @@ async with AsyncSHAClient.from_env() as sha:
     try:
         claim = await session.submit(invoice_number="INV-2026-000123")
     except SubmissionOutcomeUnknownError:
-        claim = await session.preview()          # the server knows whether it went through; ask it
+        claim = await session.preview()  # the server knows whether it went through; ask it
 
     # later, from any process that persisted the token:
     status = await sha.claims.resume(claim.consent_token).payer_status("INV-2026-000123")

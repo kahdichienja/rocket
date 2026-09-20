@@ -124,7 +124,13 @@ async def test_claim_session_end_to_end_over_http(settings: SHASettings) -> None
         )
     )
     respx.get(f"{root}/claims/preview/payer").mock(
-        return_value=httpx.Response(200, json={"pageSize": 25, "results": [{"status": "RECEIVED"}]})
+        return_value=httpx.Response(
+            200,
+            json={
+                "pageSize": 25,
+                "results": [{"guid": "G", "providerClaimNo": "INV-1", "workflowState": "RECEIVED"}],
+            },
+        )
     )
 
     async with AsyncSHAClient(settings) as sha:
@@ -167,3 +173,47 @@ async def test_submit_timeout_surfaces_as_outcome_unknown_and_is_not_retried(set
         with pytest.raises(SubmissionOutcomeUnknownError):
             await session.submit("INV-1")
     assert submit.call_count == 1
+
+
+@respx.mock
+async def test_preauth_over_http_is_multipart_with_attachment_parts(settings: SHASettings) -> None:
+    from datetime import UTC, datetime
+
+    from sha_claim import Attachment, DocumentType, Money, PractitionerRef, PreauthItem, RegulationBody
+
+    root = settings.api_root
+    respx.post(f"{root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
+    create = respx.post(f"{root}/preauths").mock(
+        return_value=httpx.Response(
+            200, json={"guid": "pg", "token": "pt", "status": "PENDING", "needsDoctorApproval": True}
+        )
+    )
+    respx.get(f"{root}/preauths").mock(
+        return_value=httpx.Response(
+            200, json={"pageSize": 25, "results": [{"guid": "pg", "status": "PENDING"}]}
+        )
+    )
+
+    start = datetime(2026, 9, 20, 8, tzinfo=UTC)
+    async with AsyncSHAClient(settings) as sha:
+        session = sha.claims.resume("CR0-TOKEN12345")
+        created = await session.request_preauth(
+            "SHA-08-006",
+            service_start=start,
+            service_end=start.replace(hour=12),
+            items=[PreauthItem("CS", "Cesarean", 1, Money.kes(30000))],
+            diagnoses=["JB0Z"],
+            doctors=[PractitionerRef.registered("A1", RegulationBody.KMPDC)],
+            notification_email="claims@facility.example",
+            attachments=[Attachment("form.pdf", b"%PDF", DocumentType.PREAUTH_FORM, "application/pdf")],
+        )
+        listed = await session.preauths()
+
+    assert created.guid == "pg" and created.awaiting_doctor
+    assert listed[0].guid == "pg"
+    body = create.calls[0].request.content
+    assert create.calls[0].request.headers["content-type"].startswith("multipart/form-data")
+    assert b'name="attachment_0"; filename="form.pdf"' in body
+    assert b'name="items"\r\n\r\n[{"item_code": "CS"' in body

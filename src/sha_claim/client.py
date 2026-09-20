@@ -11,6 +11,7 @@ import httpx
 from sha_claim.adapters.wire.http_gateways import (
     HttpConsentGateway,
     HttpEligibilityGateway,
+    HttpPreauthGateway,
     HttpVirtualClaimGateway,
 )
 from sha_claim.adapters.wire.transport import Transport
@@ -27,6 +28,7 @@ from sha_claim.infrastructure.transport import HttpxTransport
 from sha_claim.ports.clock import Clock
 from sha_claim.ports.consent_gateway import ConsentGateway
 from sha_claim.ports.eligibility_gateway import EligibilityGateway
+from sha_claim.ports.preauth_gateway import PreauthGateway
 from sha_claim.ports.token_provider import TokenProvider
 from sha_claim.ports.virtual_claim_gateway import VirtualClaimGateway
 from sha_claim.session import ClaimSession
@@ -98,8 +100,9 @@ class ConsentResource:
 class ClaimsResource:
     """Virtual claims. `open_visit` starts one; `resume` re-attaches to one you already hold the token for."""
 
-    def __init__(self, gateway: VirtualClaimGateway) -> None:
+    def __init__(self, gateway: VirtualClaimGateway, preauths: PreauthGateway) -> None:
         self._gateway = gateway
+        self._preauths = preauths
         self._open_visit = OpenVisit(gateway)
 
     async def open_visit(
@@ -112,11 +115,11 @@ class ClaimsResource:
         """`POST /claims/visit` — opens the server-side virtual claim and returns a session bound to its consent token."""
         codes = [InterventionCode.of(c) for c in interventions]
         claim = await self._open_visit.execute(PatientId.of(patient), service_type, codes, proof)
-        return ClaimSession(self._gateway, claim.consent_token, claim)
+        return ClaimSession(self._gateway, self._preauths, claim.consent_token, claim)
 
     def resume(self, consent_token: ConsentToken | str) -> ClaimSession:
         """Re-attach to an existing virtual claim (e.g. from a token persisted by NaCare). No network call."""
-        return ClaimSession(self._gateway, ConsentToken.of(consent_token))
+        return ClaimSession(self._gateway, self._preauths, ConsentToken.of(consent_token))
 
 
 class AsyncSHAClient:
@@ -156,7 +159,9 @@ class AsyncSHAClient:
         )
         self.eligibility = EligibilityResource(HttpEligibilityGateway(self._transport))
         self.consent = ConsentResource(HttpConsentGateway(self._transport))
-        self.claims = ClaimsResource(HttpVirtualClaimGateway(self._transport))
+        self.claims = ClaimsResource(
+            HttpVirtualClaimGateway(self._transport), HttpPreauthGateway(self._transport)
+        )
 
     @classmethod
     def from_env(cls) -> Self:

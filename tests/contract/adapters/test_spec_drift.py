@@ -36,6 +36,37 @@ SDK_REQUESTS: list[tuple[str, str, set[str], set[str]]] = [
     ("post", "/api/v1/claims/submit", set(), {"consent_token"}),
     ("post", "/api/v1/claims/close", set(), {"consent_token", "cancel_reason_type", "cancel_reason_text"}),
     ("get", "/api/v1/claims/preview/payer", {"guid", "provider_claim_no"}, set()),
+    ("get", "/api/v1/preauths", {"consent_token"}, set()),
+    (
+        "post",
+        "/api/v1/preauths",
+        set(),
+        {
+            "consent_token",
+            "intervention_code",
+            "service_start",
+            "service_end",
+            "items",
+            "diagnoses",
+            "doctors",
+            "attachments",
+            "provider_notification_email",
+        },
+    ),
+    (
+        "delete",
+        "/api/v1/preauths/diagnoses/{icd_code}",
+        set(),
+        {"consent_token", "icd_code", "intervention_code"},
+    ),
+    (
+        "delete",
+        "/api/v1/preauths/doctors",
+        set(),
+        {"consent_token", "intervention_code", "practitioner_registration_number"},
+    ),
+    ("post", "/api/v1/preauths/cancel", set(), {"consent_token", "intervention_code"}),
+    ("post", "/api/v1/claims/doctor-consent", set(), {"intervention_code", "request_type"}),
 ]
 
 

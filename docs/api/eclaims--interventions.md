@@ -34,6 +34,35 @@ Add intervention Request
 | `facilityIDType` | string | no |  |
 | `intervention_code` | string | **yes** |  |
 
+<details><summary>Example request body</summary>
+
+```json
+{
+  "consent_token": "consent_token",
+  "facilityID": "facilityID",
+  "facilityIDType": "facilityIDType",
+  "intervention_code": "intervention_code"
+}
+```
+
+</details>
+
+<details><summary>curl</summary>
+
+```bash
+curl --request POST \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/claims/interventions' \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "consent_token": "consent_token",
+  "facilityID": "facilityID",
+  "facilityIDType": "facilityIDType",
+  "intervention_code": "intervention_code"
+}'
+```
+</details>
+
 **Responses**
 
 <details><summary><code>200</code> — Intervention added successfully</summary>
@@ -70,6 +99,51 @@ Add intervention Request
 | `switched_lines_retained` | boolean | no |  |
 | `workflow_state` | string | no |  |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "accrued_per_diem_amount": 0,
+  "accrued_per_diem_days": 0,
+  "active_for_uhc": true,
+  "applicable_document_types": [
+    "string"
+  ],
+  "bill_from": "bill_from",
+  "bill_to": "bill_to",
+  "id": "id",
+  "intervention_code": "intervention_code",
+  "intervention_fund": "intervention_fund",
+  "intervention_name": "intervention_name",
+  "intervention_overall_tariff": 0,
+  "intervention_payment_mechanism": "intervention_payment_mechanism",
+  "is_switched_intervention": true,
+  "keph_level_tarrif": 0,
+  "needs_preauth": true,
+  "optional_document_type": [
+    "string"
+  ],
+  "optional_preauth_document_types": [
+    "string"
+  ],
+  "preauth_exist": true,
+  "required_preauth_document_types": [
+    "string"
+  ],
+  "requires_oncology_preauth": true,
+  "requires_optical_preauth": true,
+  "requires_radiology_preauth": true,
+  "requires_renal_preauth": true,
+  "requires_surgical_preauth": true,
+  "sub_benefit_code": "sub_benefit_code",
+  "supported_scheme": "supported_scheme",
+  "switched_intervention_id": 0,
+  "switched_lines_retained": true,
+  "workflow_state": "workflow_state"
+}
+```
+
 </details>
 
 <details><summary><code>400</code> — Bad Request - Missing required fields</summary>
@@ -78,6 +152,16 @@ Add intervention Request
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -88,6 +172,16 @@ Add intervention Request
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal Server Error - Service error occurred</summary>
@@ -96,6 +190,16 @@ Add intervention Request
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -119,6 +223,31 @@ Restore intervention request
 | `consent_token` | string | **yes** |  |
 | `intervention_code` | string | **yes** |  |
 
+<details><summary>Example request body</summary>
+
+```json
+{
+  "consent_token": "consent_token",
+  "intervention_code": "intervention_code"
+}
+```
+
+</details>
+
+<details><summary>curl</summary>
+
+```bash
+curl --request POST \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/claims/interventions/restore' \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "consent_token": "consent_token",
+  "intervention_code": "intervention_code"
+}'
+```
+</details>
+
 **Responses**
 
 <details><summary><code>200</code> — Intervention restored successfully</summary>
@@ -127,6 +256,16 @@ Restore intervention request
 |---|---|---|---|
 | `data` | object | no | @Description	Response data payload containing operation details 	@Example		{"status": "success"} |
 | `message` | string | no | @Description	Success message describing the operation result 	@Example		"Visit has been successfully started" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "data": {},
+  "message": "message"
+}
+```
 
 </details>
 
@@ -137,6 +276,16 @@ Restore intervention request
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>403</code> — Forbidden - Tenant context required</summary>
@@ -146,6 +295,16 @@ Restore intervention request
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal Server Error - Service error occurred</summary>
@@ -154,6 +313,16 @@ Restore intervention request
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -177,6 +346,31 @@ Retire intervention Request
 | `consent_token` | string | **yes** |  |
 | `intervention_code` | string | **yes** |  |
 
+<details><summary>Example request body</summary>
+
+```json
+{
+  "consent_token": "consent_token",
+  "intervention_code": "intervention_code"
+}
+```
+
+</details>
+
+<details><summary>curl</summary>
+
+```bash
+curl --request POST \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/claims/interventions/retire' \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "consent_token": "consent_token",
+  "intervention_code": "intervention_code"
+}'
+```
+</details>
+
 **Responses**
 
 <details><summary><code>200</code> — Intervention retired successfully</summary>
@@ -185,6 +379,16 @@ Retire intervention Request
 |---|---|---|---|
 | `data` | object | no | @Description	Response data payload containing operation details 	@Example		{"status": "success"} |
 | `message` | string | no | @Description	Success message describing the operation result 	@Example		"Visit has been successfully started" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "data": {},
+  "message": "message"
+}
+```
 
 </details>
 
@@ -195,6 +399,16 @@ Retire intervention Request
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>403</code> — Forbidden - Tenant context required</summary>
@@ -204,6 +418,16 @@ Retire intervention Request
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal Server Error - Service error occurred</summary>
@@ -212,6 +436,16 @@ Retire intervention Request
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -239,6 +473,39 @@ Switch intervention request
 | `new_intervention_code` | string | **yes** |  |
 | `retain_bill_items` | boolean | **yes** |  |
 
+<details><summary>Example request body</summary>
+
+```json
+{
+  "bill_from": "bill_from",
+  "bill_to": "bill_to",
+  "consent_token": "consent_token",
+  "existing_intervention_code": "existing_intervention_code",
+  "new_intervention_code": "new_intervention_code",
+  "retain_bill_items": true
+}
+```
+
+</details>
+
+<details><summary>curl</summary>
+
+```bash
+curl --request POST \
+  --url 'https://ilm-dev.dha.go.ke/uat-middleware/api/v1/claims/interventions/switch' \
+  --header 'Authorization: Bearer <token>' \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "bill_from": "bill_from",
+  "bill_to": "bill_to",
+  "consent_token": "consent_token",
+  "existing_intervention_code": "existing_intervention_code",
+  "new_intervention_code": "new_intervention_code",
+  "retain_bill_items": true
+}'
+```
+</details>
+
 **Responses**
 
 <details><summary><code>200</code> — Intervention switched successfully</summary>
@@ -247,6 +514,16 @@ Switch intervention request
 |---|---|---|---|
 | `data` | object | no | @Description	Response data payload containing operation details 	@Example		{"status": "success"} |
 | `message` | string | no | @Description	Success message describing the operation result 	@Example		"Visit has been successfully started" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "data": {},
+  "message": "message"
+}
+```
 
 </details>
 
@@ -257,6 +534,16 @@ Switch intervention request
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>401</code> — Unauthorized</summary>
@@ -265,6 +552,16 @@ Switch intervention request
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 
@@ -275,6 +572,16 @@ Switch intervention request
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
 
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
+
 </details>
 
 <details><summary><code>500</code> — Internal server error</summary>
@@ -283,6 +590,16 @@ Switch intervention request
 |---|---|---|---|
 | `error` | string | no | @Description	HTTP status text from the standard HTTP status codes 	@Example		"Bad Request" |
 | `message` | string | no | @Description	Detailed error message explaining what went wrong 	@Example		"token missing required tenant_id claim" |
+
+
+**Example** (portal sample; nested objects show the full shape)
+
+```json
+{
+  "error": "error",
+  "message": "message"
+}
+```
 
 </details>
 

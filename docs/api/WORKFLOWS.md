@@ -222,6 +222,12 @@ needs an HWR-registered practitioner.
    for emergency care — the UAT facility is not ("Kindly note the facility MATHARE NORTH HOSPITAL is not allowed to
    provide emergency services"), and with a beneficiary attached the upstream engine answers 500. So the emergency
    path is contract-tested against the portal examples but not live-verified.
+8. **Interventions on an open visit (UAT 2026-09-21, all four live-verified):** add / retire / restore / switch
+   each return the updated intervention list on the next `preview`. A retired intervention has
+   `workflow_state: "INACTIVE"` (the process pages never name the state); `switch` leaves the old one INACTIVE and
+   the new one ACTIVE. UAT **did not** refuse retiring an intervention that had bill items (Consultation with six
+   lines), contrary to the retire page — do not rely on DHA to protect billed lines; check `VirtualClaim.lines`
+   before retiring. `switch` with `retain_bill_items=false` needs no dates.
 6. `POST /claims/doctors` validates the practitioner against the Health Worker Registry (upstream
    `edi-api.provider-uat.sha.go.ke`); a made-up registration number is rejected.
 

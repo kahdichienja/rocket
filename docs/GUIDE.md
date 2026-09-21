@@ -832,8 +832,13 @@ for p in await session.preauths():
 doctor = PractitionerRef.registered("A1234", RegulationBody.KMPDC)
 protocols = await sha.emergency.protocols("SHA-19-001")
 session = await sha.emergency.open_case(
-    doctor, "ER-0917", BroughtBy.PARAMEDICS, ModeOfArrival.AMBULANCE, ["SHA-19-001"],
-    patient=None, notes="RTA, unconscious on arrival",  # notes are mandatory on SHA's side
+    doctor,
+    "ER-0917",
+    BroughtBy.PARAMEDICS,
+    ModeOfArrival.AMBULANCE,
+    ["SHA-19-001"],
+    patient=None,
+    notes="RTA, unconscious on arrival",  # notes are mandatory on SHA's side
 )  # unidentified casualty — interventions must be emergency-fund ones (`InterventionCoverage.is_emergency`)
 await session.add_emergency_doctor(doctor)
 await session.add_protocol(protocols[0].code, "SHA-19-001", protocols[0].tariff, diagnoses=["NF0A"])

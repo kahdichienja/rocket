@@ -226,8 +226,9 @@ needs an HWR-registered practitioner.
    each return the updated intervention list on the next `preview`. A retired intervention has
    `workflow_state: "INACTIVE"` (the process pages never name the state); `switch` leaves the old one INACTIVE and
    the new one ACTIVE. UAT **did not** refuse retiring an intervention that had bill items (Consultation with six
-   lines), contrary to the retire page — do not rely on DHA to protect billed lines; check `VirtualClaim.lines`
-   before retiring. `switch` with `retain_bill_items=false` needs no dates.
+   lines), contrary to the retire page — and **deleted those lines** (invoice KES 3,000 → 0); `restore` brought the
+   intervention back but not the lines. Do not rely on DHA to protect billed lines: check `VirtualClaim.lines`
+   before retiring, or `switch` with `retain_bill_items=True`. `switch` with `retain_bill_items=false` needs no dates.
 6. `POST /claims/doctors` validates the practitioner against the Health Worker Registry (upstream
    `edi-api.provider-uat.sha.go.ke`); a made-up registration number is rejected.
 

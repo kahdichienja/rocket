@@ -574,9 +574,11 @@ async def test_emergency_flow_through_session() -> None:
 def test_emergency_command_invariants() -> None:
     doctor = PractitionerRef.registered("A1", RegulationBody.KMPDC)
     with pytest.raises(ValueError, match="reference_number"):
-        EmergencyCase(doctor, " ", BroughtBy.RELATIVE, ModeOfArrival.WALK_IN, (CODE,))
+        EmergencyCase(doctor, " ", BroughtBy.RELATIVE, ModeOfArrival.WALK_IN, (CODE,), notes="x")
     with pytest.raises(ValueError, match="intervention"):
-        EmergencyCase(doctor, "REF", BroughtBy.RELATIVE, ModeOfArrival.WALK_IN, ())
+        EmergencyCase(doctor, "REF", BroughtBy.RELATIVE, ModeOfArrival.WALK_IN, (), notes="x")
+    with pytest.raises(ValueError, match="notes"):
+        EmergencyCase(doctor, "REF", BroughtBy.RELATIVE, ModeOfArrival.WALK_IN, (CODE,), notes=" ")
     with pytest.raises(ValueError, match="case_number"):
         EmtClaim(
             ProtocolCode("P"),

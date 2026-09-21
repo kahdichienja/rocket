@@ -90,6 +90,22 @@ def _unwrap(text: str, depth: int = 3) -> str:
             return current
         if not isinstance(obj, dict):
             return current
-        inner = obj.get("error") or obj.get("detail") or obj.get("message") or next(iter(obj.values()), "")
-        current = _unwrap(json.dumps(inner)) if isinstance(inner, dict) else str(inner).strip()
+        inner = obj.get("error") or obj.get("detail") or obj.get("message")
+        if inner is None and len(obj) == 1:
+            only = next(iter(obj.values()))
+            if isinstance(only, dict) or (isinstance(only, str) and only.lstrip().startswith("{")):
+                inner = only  # a wrapper such as {"Edi Error": {...}}
+        if inner is None:
+            # DRF-style field errors: {"notes": ["This field may not be blank."]} → "notes: This field may not be blank."
+            return "; ".join(f"{k}: {_join(v)}" for k, v in obj.items() if v not in (None, "", [], {}))
+        current = _join(inner)
     return current
+
+
+def _join(value: object) -> str:
+    """A list of messages reads as one line; anything else as its string form."""
+    if isinstance(value, list):
+        return "; ".join(_join(v) for v in value)
+    if isinstance(value, dict):
+        return _unwrap(json.dumps(value))
+    return str(value).strip()

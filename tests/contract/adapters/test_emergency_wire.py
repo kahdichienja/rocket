@@ -42,12 +42,12 @@ def test_open_emergency_case_identified_and_unidentified() -> None:
         "SHA-19-001"
     ]
     unidentified = requests.open_emergency_case(
-        EmergencyCase(DOCTOR, "REF-2", BroughtBy.UNKNOWN, ModeOfArrival.WALK_IN, (CODE,))
+        EmergencyCase(DOCTOR, "REF-2", BroughtBy.UNKNOWN, ModeOfArrival.WALK_IN, (CODE,), notes="walk-in")
     )
     assert (
         "beneficiary_cr_id" not in unidentified.json
         and "otp" not in unidentified.json
-        and "notes" not in unidentified.json
+        and unidentified.json["notes"] == "walk-in"
     )
 
 

@@ -183,6 +183,17 @@ persists the journey with the consent token Fernet-encrypted, snapshot with the 
 Files: `app/{domain,gateways,use_cases,infrastructure,routes}/sha/`, `models.SHAClaimJourney`,
 migration `a1c3e5f7b9d1`, `tests/sha/`. Nothing legacy touched except `main.py` (lifespan + 3 `include_router`).
 
+**Shared journey state (2026-09-21).** Reception is many people at many desks, so the browser never holds the
+journey. `GET /claims/current?patient_cr=` returns the one journey still in progress (`OTP_SENT | OPEN |
+SUBMIT_UNKNOWN`, newest first) or `null`; the frontend reads it through TanStack (`useShaJourney`: refetch on
+focus, 15 s poll while `OTP_SENT`, invalidated after every mutation). Two rules keep "current" single-valued:
+a new OTP marks older `OTP_SENT` journeys for the patient `CLOSED` (superseded), and `POST /consent/otp` is
+refused with 409 — before any DHA call — while a journey is `OPEN`/`SUBMIT_UNKNOWN`, because DHA's
+open-visit is idempotent and would silently attach a second journey to the same invoice. Verified live: desk A
+sends the OTP, desk B (empty browser) sees `OTP_SENT` and opens the visit, desk C's reload sees `OPEN`.
+UAT note: member `123456` (`CR5274957287918-1`) has no phone contact on DHA's side (`contact id 0 doesn't
+exist`), so OTP tests use `CR7678914660684-5`.
+
 Two SDK defects found and fixed by this stage: `slots=True` dataclasses used zero-arg `super()` (breaks on
 Python < 3.14); `ConsentToken` serialised to its raw value in snapshots (now redacted).
 

@@ -40,6 +40,12 @@ class InterventionCoverage:
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @property
+    def is_emergency(self) -> bool:
+        """Payable from the Emergency, Chronic and Critical Illness Fund — the only interventions
+        `POST /claims/emergency` accepts (UAT: Consultation "is not supported for service type EMERGENCY")."""
+        return "ECCIF" in self.fund.upper()
+
+    @property
     def service_type_for_authorization(self) -> ServiceType:
         """UAT rejects CAPITATION interventions under OUTPATIENT; they must be authorised as CAPITATION."""
         if self.payment_mechanism == PaymentMechanism.CAPITATION:

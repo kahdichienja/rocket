@@ -260,9 +260,13 @@ class EmergencyResource:
         *,
         patient: PatientId | str | None = None,
         otp: Otp | None = None,
-        notes: str = "",
+        notes: str,
     ) -> ClaimSession:
-        """`POST /claims/emergency` — `patient=None` for an unidentified casualty."""
+        """`POST /claims/emergency` — `patient=None` for an unidentified casualty.
+
+        `notes` is required by SHA. Interventions must belong to the emergency fund (see
+        `InterventionCoverage.is_emergency`); the facility must be accredited for emergency services.
+        """
         try:
             case = EmergencyCase(
                 attending,

@@ -17,7 +17,11 @@ from sha_claim.domain.practitioner import PractitionerRef
 
 @dataclass(frozen=True, slots=True)
 class EmergencyCase:
-    """Command for `POST /claims/emergency`. `beneficiary` is None for an unidentified patient."""
+    """Command for `POST /claims/emergency`. `beneficiary` is None for an unidentified patient.
+
+    `notes` is mandatory: the portal marks it optional, but UAT rejects a missing or blank value
+    (`{"notes": ["This field may not be blank."]}`).
+    """
 
     attending: PractitionerRef
     reference_number: str
@@ -33,7 +37,10 @@ class EmergencyCase:
             raise ValueError("reference_number cannot be empty")
         if not self.interventions:
             raise ValueError("at least one intervention code is required")
+        if not self.notes.strip():
+            raise ValueError("notes cannot be empty (SHA rejects an emergency case without notes)")
         object.__setattr__(self, "reference_number", self.reference_number.strip())
+        object.__setattr__(self, "notes", self.notes.strip())
 
 
 @dataclass(frozen=True, slots=True)

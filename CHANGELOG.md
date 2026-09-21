@@ -4,6 +4,21 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.8] — 2026-09-21
+
+### Changed
+- `EmergencyCase` / `emergency.open_case()` now require `notes` (keyword-only): UAT rejects an emergency case
+  with blank notes (`{"notes": ["This field may not be blank."]}`), so the SDK refuses before sending.
+
+### Added
+- `InterventionCoverage.is_emergency` — payable from the Emergency, Chronic and Critical Illness Fund
+  (`fund` contains `ECCIF`); the only interventions `POST /claims/emergency` accepts.
+- Error text now unwraps DRF-style field errors and list-valued upstream messages:
+  `{"notes":["This field may not be blank."]}` → `notes: This field may not be blank.`
+
+### Docs
+- WORKFLOWS §9.7: emergency facts learned on UAT (notes mandatory, ECCIF interventions, facility accreditation).
+
 ## [0.1.7] — 2026-09-20
 ### Changed
 - `PatientId` now enforces the Client Registry shape (`CR` + 13 digits + `-` + check digit) on the request side. DHA accepts any string and creates authorizations against it (seen on UAT with HMIS-internal patient numbers). Response-side values that do not match map to `None` instead of raising.

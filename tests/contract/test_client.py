@@ -329,7 +329,7 @@ async def test_emergency_case_over_http(settings: SHASettings) -> None:
     async with AsyncSHAClient(settings) as sha:
         protocols = await sha.emergency.protocols("SHA-19-001")
         session = await sha.emergency.open_case(
-            doctor, "REF-1", BroughtBy.PARAMEDICS, ModeOfArrival.AMBULANCE, ["SHA-19-001"]
+            doctor, "REF-1", BroughtBy.PARAMEDICS, ModeOfArrival.AMBULANCE, ["SHA-19-001"], notes="RTA"
         )
         line = await session.add_protocol(
             protocols[0].code, "SHA-19-001", protocols[0].tariff or Money.kes(0)

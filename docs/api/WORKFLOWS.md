@@ -215,6 +215,13 @@ needs an HWR-registered practitioner.
    `POST /claims/doctors` ("there is no doctor attached to the claim"). `POST /claims/discharge` itself is
    **INPATIENT-only** ("only claims of service type INPATIENT … use appropriate route for CAPITATION") and
    wants an RFC 3339 datetime, not a date.
+7. **Emergency (`POST /claims/emergency`, UAT 2026-09-21):** `notes` is mandatory (blank → `{"notes":["This
+   field may not be blank."]}`), despite the portal marking it optional. Interventions must be payable from the
+   emergency fund (`fund: "ECCIF Only"`, sub-benefit `SHA-01-SC-01 Emergency`); a capitation one is refused
+   ("Consultation(SHA-12-001) is not supported for service type EMERGENCY"). The **facility must be accredited**
+   for emergency care — the UAT facility is not ("Kindly note the facility MATHARE NORTH HOSPITAL is not allowed to
+   provide emergency services"), and with a beneficiary attached the upstream engine answers 500. So the emergency
+   path is contract-tested against the portal examples but not live-verified.
 6. `POST /claims/doctors` validates the practitioner against the Health Worker Registry (upstream
    `edi-api.provider-uat.sha.go.ke`); a made-up registration number is rejected.
 

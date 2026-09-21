@@ -517,8 +517,7 @@ def open_emergency_case(case: EmergencyCase) -> WireRequest:
         body["beneficiary_cr_id"] = case.beneficiary.value
     if case.otp is not None:
         body["otp"] = case.otp.code
-    if case.notes:
-        body["notes"] = case.notes
+    body["notes"] = case.notes  # mandatory on UAT despite the portal marking it optional
     return WireRequest("POST", "/claims/emergency", json=body)
 
 

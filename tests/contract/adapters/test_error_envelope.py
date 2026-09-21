@@ -48,3 +48,17 @@ def test_details_used_when_error_and_message_are_generic() -> None:
 def test_malformed_json_falls_back_gracefully() -> None:
     env = ErrorEnvelope.model_validate({"error": "{not json", "message": "m"})
     assert env.detail() == "{not json"
+
+
+def test_field_errors_and_message_lists_read_as_text() -> None:
+    """UAT 2026-09-21: DRF field errors and list-valued `error` from the upstream engine."""
+    env = ErrorEnvelope(
+        error="Bad Request",
+        message='failed to perform requested claim operation: {"notes":["This field may not be blank."]}',
+    )
+    assert env.detail() == "failed to perform requested claim operation: notes: This field may not be blank."
+    env = ErrorEnvelope(
+        error="Bad Request",
+        message='failed: {"Edi Error":{"error":["Kindly note the facility X is not allowed to provide emergency services."]}}',
+    )
+    assert env.detail() == "failed: Kindly note the facility X is not allowed to provide emergency services."

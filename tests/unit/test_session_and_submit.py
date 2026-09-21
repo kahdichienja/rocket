@@ -209,6 +209,9 @@ class FakeGateway:
         self._rec("resubmit_lines", token)
         return LineResubmission(LineGuid("L1"), "RESUBMITTED", "ok")
 
+    async def set_coverage(self, token: ConsentToken, selection: Any) -> None:
+        self._rec("set_coverage", token, selection)
+
     async def payer_status(
         self, claim_guid: ClaimGuid, provider_claim_no: str
     ) -> tuple[PayerClaimRecord, ...]:
@@ -631,3 +634,12 @@ async def test_switch_with_retained_bill_items_needs_both_dates() -> None:
     assert not ClaimIntervention(
         InterventionCode("SHA-1"), "x", PaymentMechanism.CAPITATION, False, False, "RETIRED"
     ).is_active
+
+
+async def test_set_coverage_validates_then_forwards() -> None:
+    gw = FakeGateway()
+    s = ClaimSession(gateways(claims=gw), TOKEN)
+    with pytest.raises(RequestValidationError, match="coverage"):
+        await s.set_coverage("CR1111111111111-1", " ")
+    await s.set_coverage("CR1111111111111-1", "POMSF-1")
+    assert gw.calls[-1][0] == "set_coverage"

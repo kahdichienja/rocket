@@ -56,7 +56,10 @@ Cache until `expires_in` minus a safety skew; refresh single-flight; on 401 refr
 5. Build the claim (all keyed by consent_token):
    POST  /claims/interventions          add intervention          (also /retire, /restore, /switch)
    POST  /claims/diagnoses              {icd_code, intervention_code}
-   POST  /claims/lines   (multipart)    {intervention_code, unit_price, quantity, scheme_code?, charge_date?, diagnoses?, attachments?}
+   POST  /authorizations/covers         {principal_cr_id, consent_token, policy_number}   POMSF only, before lines (process docs)
+   POST  /claims/lines   (multipart)    {intervention_code, unit_price, quantity, scheme_code?, charge_date?, diagnoses?,
+                                         service_name?, service_identifier?, practitioner_*?, attachments? (+ binary parts)}
+                                        = "Add New Line" / "Add Combined Billing Details" on the process docs
    POST  /claims/attachments (multipart){file_blob, document_type∈enum, intervention_code}
    (PATCH variants remove diagnoses / lines / attachments)
 

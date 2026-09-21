@@ -4,6 +4,16 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.10] — 2026-09-21
+
+### Added
+- `ClaimSession.set_coverage(principal, policy_number)` — `POST /authorizations/covers` (POMSF schemes; DHA
+  billing process page "Set Coverage", absent from the eclaims portal).
+- `add_line` / `NewClaimLine` take `service_name`, `service_identifier`, `practitioner` and `attachments`
+  (`LineAttachment`) — DHA's "Add New Line" and "Add Combined Billing Details" in one multipart call, with the
+  upload timeout when files are present.
+- Exports: `CoverageSelection`, `LineAttachment`.
+
 ## [0.1.9] — 2026-09-21
 
 ### Added

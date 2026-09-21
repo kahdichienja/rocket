@@ -12,7 +12,9 @@ from sha_claim.domain.claim import (
     ClaimDiagnosis,
     ClaimIntervention,
     ClaimLine,
+    CoverageSelection,
     Discharge,
+    LineAttachment,
     LineEdit,
     LineResubmission,
     NewClaimLine,
@@ -143,7 +145,17 @@ class ClaimSession:
         scheme_code: SchemeCode | str | None = None,
         charge_date: date | None = None,
         diagnoses: Sequence[Icd11Code | str] = (),
+        service_name: str = "",
+        service_identifier: str = "",
+        practitioner: PractitionerRef | None = None,
+        attachments: Sequence[LineAttachment] = (),
     ) -> ClaimLine:
+        """`POST /claims/lines` — bill an item on the visit.
+
+        With `diagnoses`/`attachments` this is DHA's "Add Combined Billing Details": one multipart call.
+        `service_name`/`service_identifier` label the line and tie it to your own charge record; the
+        amount must be within the tariff or the member's PMF balance.
+        """
         try:
             line = NewClaimLine(
                 intervention_code=InterventionCode.of(intervention),
@@ -152,6 +164,10 @@ class ClaimSession:
                 scheme_code=SchemeCode.of(scheme_code) if scheme_code is not None else None,
                 charge_date=charge_date,
                 diagnoses=tuple(Icd11Code.of(d) for d in diagnoses),
+                service_name=service_name,
+                service_identifier=service_identifier,
+                practitioner=practitioner,
+                attachments=tuple(attachments),
             )
         except ValueError as exc:
             raise RequestValidationError([Violation("line", str(exc))]) from exc
@@ -281,6 +297,18 @@ class ClaimSession:
         except ValueError as exc:
             raise RequestValidationError([Violation("next_of_kin", str(exc))]) from exc
         return await self._gateway.add_next_of_kin(self.consent_token, command)
+
+    async def set_coverage(self, principal: PatientId | str, policy_number: str) -> None:
+        """`POST /authorizations/covers` — choose which member's policy pays (POMSF schemes only).
+
+        Call before adding lines or pre-auths. `policy_number` comes from eligibility
+        (`Scheme.policy_number`); `principal` is the member whose cover pays, not necessarily the patient.
+        """
+        try:
+            selection = CoverageSelection(PatientId.of(principal), policy_number)
+        except ValueError as exc:
+            raise RequestValidationError([Violation("coverage", str(exc))]) from exc
+        await self._gateway.set_coverage(self.consent_token, selection)
 
     async def resubmit_lines(self) -> LineResubmission:
         """`POST /claims/lines/resubmit` — after `edit_line` following payer review."""

@@ -49,6 +49,7 @@ from sha_claim.domain.claim import (
     ClaimDiagnosis,
     ClaimIntervention,
     ClaimLine,
+    CoverageSelection,
     Discharge,
     LineEdit,
     LineResubmission,
@@ -294,6 +295,9 @@ class HttpVirtualClaimGateway:
     async def resubmit_lines(self, token: ConsentToken) -> LineResubmission:
         response = await self._transport.send(requests.resubmit_lines(token))
         return mappers.to_line_resubmission(parse_as(LineResubmissionWire, response))
+
+    async def set_coverage(self, token: ConsentToken, selection: CoverageSelection) -> None:
+        raise_for_status(await self._transport.send(requests.set_coverage(token, selection)))
 
 
 class HttpPreauthGateway:

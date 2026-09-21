@@ -162,3 +162,58 @@ def test_switch_intervention_request() -> None:
 def test_list_authorizations_request() -> None:
     r = requests.list_authorizations(PatientId("CR1111111111111-1"))
     assert r.idempotent and r.params == {"beneficiary_code": "CR1111111111111-1"}
+
+
+def test_combined_billing_line_carries_label_practitioner_diagnoses_and_files() -> None:
+    from sha_claim.domain.claim import LineAttachment
+    from sha_claim.domain.codes import RegulationBody
+    from sha_claim.domain.practitioner import PractitionerRef
+
+    line = NewClaimLine(
+        CODE,
+        Money.kes("2600"),
+        1,
+        diagnoses=(Icd11Code("1A00"),),
+        service_name=" Anti-rabies vaccine ",
+        service_identifier="CHG-42",
+        practitioner=PractitionerRef.registered("A1234", RegulationBody.KMPDC),
+        attachments=(
+            LineAttachment(
+                "Lab report", Attachment("lab.pdf", b"%PDF", DocumentType.LAB_RESULTS, "application/pdf")
+            ),
+            LineAttachment("Photo", Attachment("w.jpg", b"\xff\xd8", DocumentType.OTHER, "image/jpeg")),
+        ),
+    )
+    r = requests.add_line(TOKEN, line)
+    assert r.form is not None and r.files is not None
+    assert r.form["service_name"] == "Anti-rabies vaccine" and r.form["service_identifier"] == "CHG-42"
+    assert r.form["practitioner_identification_type"] == "registration_number"
+    assert r.form["practitioner_identification_number"] == "A1234"
+    assert r.form["practitioner_regulation_body"] == "KMPDC"
+    meta = json.loads(r.form["attachments"])
+    assert [m["file_field_name"] for m in meta] == ["attachment_0", "attachment_1"]
+    assert meta[0] == {
+        "document_title": "Lab report",
+        "document_type": "LAB_RESULTS",
+        "file_field_name": "attachment_0",
+    }
+    assert r.files["attachment_0"] == ("lab.pdf", b"%PDF", "application/pdf")
+    assert r.timeout is TimeoutKind.UPLOAD
+    plain = requests.add_line(TOKEN, NewClaimLine(CODE, Money.kes(1), 1))
+    assert (
+        plain.files is None
+        and plain.timeout is TimeoutKind.DEFAULT
+        and "attachments" not in (plain.form or {})
+    )
+
+
+def test_set_coverage_request() -> None:
+    from sha_claim.domain.claim import CoverageSelection
+
+    r = requests.set_coverage(TOKEN, CoverageSelection(PatientId("CR1111111111111-1"), " POMSF-123 "))
+    assert r.method == "POST" and r.path == "/authorizations/covers"
+    assert r.json == {
+        "principal_cr_id": "CR1111111111111-1",
+        "consent_token": "CR1-ABCDEFGHIJ",
+        "policy_number": "POMSF-123",
+    }

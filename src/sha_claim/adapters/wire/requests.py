@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from sha_claim.adapters.wire.transport import TimeoutKind, WireRequest
 from sha_claim.domain.attachments import Attachment
-from sha_claim.domain.claim import Discharge, LineEdit, NewClaimLine, NextOfKin, Submission
+from sha_claim.domain.claim import CoverageSelection, Discharge, LineEdit, NewClaimLine, NextOfKin, Submission
 from sha_claim.domain.codes import Icd11Code, InterventionCode
 from sha_claim.domain.consent import BiometricGuid, ConsentProof, MatchId, Otp
 from sha_claim.domain.emergency import EmergencyCase, EmtClaim, ProtocolLine
@@ -180,7 +180,54 @@ def add_line(token: ConsentToken, line: NewClaimLine) -> WireRequest:
         form["diagnoses"] = json.dumps(
             [d.value for d in line.diagnoses]
         )  # spec: "JSON array of ICD diagnosis codes"
-    return WireRequest("POST", "/claims/lines", form=form, multipart=True)
+    if line.service_name:
+        form["service_name"] = line.service_name
+    if line.service_identifier:
+        form["service_identifier"] = line.service_identifier
+    if line.practitioner is not None:
+        form["practitioner_identification_type"] = line.practitioner.identification_type.value
+        form["practitioner_identification_number"] = line.practitioner.identification_number
+        form["practitioner_regulation_body"] = line.practitioner.regulation_body.value
+    files: dict[str, tuple[str, bytes, str]] = {}
+    if line.attachments:
+        # "Add Combined Billing Details": metadata objects name the binary part that carries each file.
+        meta = []
+        for n, item in enumerate(line.attachments):
+            field_name = f"attachment_{n}"
+            meta.append(
+                {
+                    "document_title": item.document_title,
+                    "document_type": item.attachment.document_type.value,
+                    "file_field_name": field_name,
+                }
+            )
+            files[field_name] = (
+                item.attachment.filename,
+                item.attachment.content,
+                item.attachment.content_type,
+            )
+        form["attachments"] = json.dumps(meta)
+    return WireRequest(
+        "POST",
+        "/claims/lines",
+        form=form,
+        files=files or None,
+        multipart=True,
+        timeout=TimeoutKind.UPLOAD if files else TimeoutKind.DEFAULT,
+    )
+
+
+def set_coverage(token: ConsentToken, selection: CoverageSelection) -> WireRequest:
+    """`POST /authorizations/covers` — on the DHA process pages only, not the eclaims portal."""
+    return WireRequest(
+        "POST",
+        "/authorizations/covers",
+        json={
+            "principal_cr_id": selection.principal.value,
+            "consent_token": token.value,
+            "policy_number": selection.policy_number,
+        },
+    )
 
 
 def remove_line(token: ConsentToken, line: LineGuid) -> WireRequest:

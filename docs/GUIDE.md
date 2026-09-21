@@ -493,7 +493,7 @@ Methods that return a `VirtualClaim` also refresh `session.claim`.
 
 ### 9.3 Billing lines
 
-#### `add_line(intervention, unit_price, quantity=1, *, scheme_code=None, charge_date=None, diagnoses=()) → ClaimLine`
+#### `add_line(intervention, unit_price, quantity=1, *, scheme_code=None, charge_date=None, diagnoses=(), service_name="", service_identifier="", practitioner=None, attachments=()) → ClaimLine`
 
 | Param | Type | Notes |
 |---|---|---|
@@ -503,9 +503,16 @@ Methods that return a `VirtualClaim` also refresh `session.claim`.
 | `scheme_code` | `SchemeCode \| str \| None` | e.g. `"UHC"` |
 | `charge_date` | `date \| None` | |
 | `diagnoses` | ICD codes | linked to this line |
+| `service_name` | `str` | label for the line (DHA "Add New Line") |
+| `service_identifier` | `str` | your own charge/order reference, for reconciliation |
+| `practitioner` | `PractitionerRef \| None` | attending doctor — one per claim |
+| `attachments` | `LineAttachment(document_title, Attachment)` … | files sent with the line ("Add Combined Billing Details") |
 
 Sends `POST /claims/lines` as **multipart/form-data**: `consent_token, intervention_code,
-unit_price ("1500.00"), quantity, [scheme_code], [charge_date], [diagnoses = JSON array]`.
+unit_price ("1500.00"), quantity, [scheme_code], [charge_date], [diagnoses = JSON array],
+[service_name], [service_identifier], [practitioner_identification_type/number, practitioner_regulation_body],
+[attachments = JSON array of {document_title, document_type, file_field_name}]` plus one binary part per
+attachment named `attachment_0`, `attachment_1`, … (upload timeout applies when files are present).
 
 Returns **`ClaimLine`**: `guid` (needed to remove/edit), `intervention_code`, `item_code`, `item_name`,
 `quantity` (Decimal), `unit_price`, `total_amount`, `net_amount`, `copay`, `scheme_code`,
@@ -730,6 +737,13 @@ Claim documents normally go through `session.attach(...)`. These are for standal
 ---
 
 ## 12. End-to-end recipes
+
+#### `set_coverage(principal, policy_number) → None`
+
+`POST /authorizations/covers` — **POMSF schemes only** (the DHA process pages; not on the eclaims portal).
+Chooses which member's policy pays for this visit: `principal` is the CR number of the member whose cover
+pays (not necessarily the patient), `policy_number` is `Scheme.policy_number` from eligibility — never
+composed locally. Call before adding lines or pre-auths. `RequestValidationError` on a blank policy number.
 
 ### 12.1 Outpatient consultation (the common case)
 

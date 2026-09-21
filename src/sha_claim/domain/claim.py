@@ -12,6 +12,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from sha_claim.domain.attachments import Attachment
 from sha_claim.domain.codes import Icd11Code, InterventionCode, SchemeCode
 from sha_claim.domain.consent import Otp
 from sha_claim.domain.enums import (
@@ -21,8 +22,16 @@ from sha_claim.domain.enums import (
     PaymentMechanism,
     ServiceType,
 )
-from sha_claim.domain.identifiers import AttachmentId, ClaimGuid, ConsentToken, InvoiceNumber, LineGuid
+from sha_claim.domain.identifiers import (
+    AttachmentId,
+    ClaimGuid,
+    ConsentToken,
+    InvoiceNumber,
+    LineGuid,
+    PatientId,
+)
 from sha_claim.domain.money import Money
+from sha_claim.domain.practitioner import PractitionerRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,8 +229,27 @@ class VirtualClaim:
 
 
 @dataclass(frozen=True, slots=True)
+class LineAttachment:
+    """A document sent with a line ("Add Combined Billing Details"): the file plus its title."""
+
+    document_title: str
+    attachment: Attachment
+
+    def __post_init__(self) -> None:
+        if not self.document_title.strip():
+            raise ValueError("document_title cannot be empty")
+        object.__setattr__(self, "document_title", self.document_title.strip())
+
+
+@dataclass(frozen=True, slots=True)
 class NewClaimLine:
-    """Command for `POST /claims/lines`."""
+    """Command for `POST /claims/lines`.
+
+    The minimal form is intervention + price + quantity. The DHA billing pages ("Add New Line" and "Add
+    Combined Billing Details") also take a label and your own reference for the line (`service_name`,
+    `service_identifier`), the attending practitioner (one doctor per claim), and the line's diagnoses and
+    attachments in the same multipart call.
+    """
 
     intervention_code: InterventionCode
     unit_price: Money
@@ -229,12 +257,18 @@ class NewClaimLine:
     scheme_code: SchemeCode | None = None
     charge_date: date | None = None
     diagnoses: tuple[Icd11Code, ...] = ()
+    service_name: str = ""
+    service_identifier: str = ""
+    practitioner: PractitionerRef | None = None
+    attachments: tuple[LineAttachment, ...] = ()
 
     def __post_init__(self) -> None:
         if Decimal(self.quantity) <= 0:
             raise ValueError("quantity must be positive")
         if self.unit_price.is_negative:
             raise ValueError("unit_price cannot be negative")
+        object.__setattr__(self, "service_name", self.service_name.strip())
+        object.__setattr__(self, "service_identifier", self.service_identifier.strip())
 
     @property
     def total(self) -> Money:
@@ -356,3 +390,20 @@ class LineResubmission:
 
 def _is_retired(workflow_state: str) -> bool:
     return workflow_state.strip().upper() in {"RETIRED", "CANCELLED", "CANCELED", "INACTIVE", "DELETED"}
+
+
+@dataclass(frozen=True, slots=True)
+class CoverageSelection:
+    """`POST /authorizations/covers` — which member's policy pays for this visit (POMSF schemes only).
+
+    `principal` is the member whose cover pays: the principal, who is not necessarily the patient.
+    `policy_number` must be the one DHA returned in eligibility (`schemes[].policy_number`), never composed.
+    """
+
+    principal: PatientId
+    policy_number: str
+
+    def __post_init__(self) -> None:
+        if not self.policy_number.strip():
+            raise ValueError("policy_number cannot be empty")
+        object.__setattr__(self, "policy_number", self.policy_number.strip())

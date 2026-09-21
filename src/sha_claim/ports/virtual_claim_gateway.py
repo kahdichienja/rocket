@@ -10,6 +10,7 @@ from sha_claim.domain.claim import (
     ClaimDiagnosis,
     ClaimIntervention,
     ClaimLine,
+    CoverageSelection,
     Discharge,
     LineEdit,
     LineResubmission,
@@ -103,3 +104,5 @@ class VirtualClaimGateway(VisitOpener, ClaimSubmitter, Protocol):
     async def add_next_of_kin(self, token: ConsentToken, next_of_kin: NextOfKin) -> NextOfKinContact: ...
 
     async def resubmit_lines(self, token: ConsentToken) -> LineResubmission: ...
+
+    async def set_coverage(self, token: ConsentToken, selection: CoverageSelection) -> None: ...

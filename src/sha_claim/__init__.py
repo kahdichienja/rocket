@@ -16,8 +16,10 @@ from sha_claim.domain.claim import (
     ClaimDiagnosis,
     ClaimIntervention,
     ClaimLine,
+    CoverageSelection,
     Discharge,
     Invoice,
+    LineAttachment,
     LineEdit,
     LineResubmission,
     NewClaimLine,
@@ -93,7 +95,7 @@ from sha_claim.facility import (
 from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
-__version__ = "0.1.9"
+__version__ = "0.1.10"
 
 __all__ = [
     "AsyncSHAClient",
@@ -121,6 +123,7 @@ __all__ = [
     "ConfigurationError",
     "ConsentToken",
     "Coverage",
+    "CoverageSelection",
     "CoverageStatus",
     "Discharge",
     "DischargeReason",
@@ -149,6 +152,7 @@ __all__ = [
     "InterventionCoverage",
     "Invoice",
     "InvoiceNumber",
+    "LineAttachment",
     "LineEdit",
     "LineGuid",
     "LineResubmission",

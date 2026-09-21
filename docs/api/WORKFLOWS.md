@@ -232,6 +232,12 @@ needs an HWR-registered practitioner.
    lines), contrary to the retire page — and **deleted those lines** (invoice KES 3,000 → 0); `restore` brought the
    intervention back but not the lines. Do not rely on DHA to protect billed lines: check `VirtualClaim.lines`
    before retiring, or `switch` with `retain_bill_items=True`. `switch` with `retain_bill_items=false` needs no dates.
+9. **UAT facility contracts change without notice (2026-09-21, later in the day):** `POST /claims/visit` for
+   MATHARE NORTH HOSPITAL (FID-47-115307-8) started answering "Kindly note the facility … is not allowed to
+   provide service for intervention Consultation(SHA-12-001) of sub benefit Outpatient Care" for every
+   capitation intervention that had opened fine the day before. Nothing in the request changed. Treat the
+   sandbox facility's contract as volatile; the SDK surfaces it as a `BadRequestError` and NaCare words it as
+   `FACILITY_NOT_CONTRACTED`.
 6. `POST /claims/doctors` validates the practitioner against the Health Worker Registry (upstream
    `edi-api.provider-uat.sha.go.ke`); a made-up registration number is rejected.
 

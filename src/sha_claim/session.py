@@ -70,12 +70,23 @@ class ClaimSession:
     # ── interventions ──
 
     async def add_intervention(self, code: InterventionCode | str) -> ClaimIntervention:
+        """`POST /claims/interventions` — add a service to the open visit.
+
+        DHA rules: the visit must be active; the code must be a recognised intervention; it must not
+        break combination rules with what is already on the visit (e.g. no mixing IP and OP interventions).
+        """
         return await self._gateway.add_intervention(self.consent_token, InterventionCode.of(code))
 
     async def retire_intervention(self, code: InterventionCode | str) -> None:
+        """`POST /claims/interventions/retire` — logically remove an ACTIVE intervention.
+
+        DHA refuses when the intervention has bill items, has a diagnosis linked to it, or is a per-diem
+        intervention. Remove lines/diagnoses first, or use `switch_intervention` to carry them over.
+        """
         await self._gateway.retire_intervention(self.consent_token, InterventionCode.of(code))
 
     async def restore_intervention(self, code: InterventionCode | str) -> None:
+        """`POST /claims/interventions/restore` — reinstate a retired intervention (only retired ones)."""
         await self._gateway.restore_intervention(self.consent_token, InterventionCode.of(code))
 
     async def switch_intervention(
@@ -87,7 +98,17 @@ class ClaimSession:
         bill_from: datetime | None = None,
         bill_to: datetime | None = None,
     ) -> None:
-        """`POST /claims/interventions/switch` — replace an intervention, optionally keeping its billed lines."""
+        """`POST /claims/interventions/switch` — replace an ACTIVE intervention with another.
+
+        DHA rules: the new code must share the existing one's access point and must not require elective
+        pre-authorization; when `retain_bill_items` is true, `bill_from` and `bill_to` (the previous
+        intervention's billing period) are required — checked here before anything is sent. Retention is
+        not possible from per-diem to surgical interventions.
+        """
+        if retain_bill_items and (bill_from is None or bill_to is None):
+            raise RequestValidationError(
+                [Violation("bill_from/bill_to", "required when retain_bill_items is true")]
+            )
         await self._gateway.switch_intervention(
             self.consent_token,
             InterventionCode.of(existing),

@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.9] — 2026-09-21
+
+### Added
+- `ClaimIntervention.is_active` (ACTIVE on the visit; only retired ones can be restored).
+- `ClaimSession.switch_intervention` refuses `retain_bill_items=True` without both `bill_from` and `bill_to`
+  (DHA requires the previous intervention's billing period) — `RequestValidationError`, nothing sent.
+
+### Docs
+- Intervention rules from the DHA process pages on `add_intervention` / `retire_intervention` /
+  `restore_intervention` / `switch_intervention` docstrings: combination rules (no IP/OP mixing), retire
+  refused with bill items, a linked diagnosis or a per-diem intervention, switch needs the same access point
+  and no elective pre-auth on the new code.
+
 ## [0.1.8] — 2026-09-21
 
 ### Changed

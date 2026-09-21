@@ -35,6 +35,7 @@ from sha_claim.domain.enums import (
     DischargeReason,
     ModeOfArrival,
     NextOfKinIdType,
+    PaymentMechanism,
     ServiceType,
 )
 from sha_claim.domain.identifiers import (
@@ -613,3 +614,20 @@ async def test_submit_forwards_discharge_fields_and_add_doctor() -> None:
     await s.submit("INV-1", discharge_reason=DischargeReason.RECOVERED, otp="123456")
     assert gw.calls[0][0] == "add_doctor"
     assert gw.calls[1] == ("submit", (TOKEN, InvoiceNumber("INV-1"), None))
+
+
+async def test_switch_with_retained_bill_items_needs_both_dates() -> None:
+    s = ClaimSession(gateways(claims=FakeGateway()), TOKEN)
+    with pytest.raises(RequestValidationError, match="bill_from/bill_to"):
+        await s.switch_intervention("SHA-12-001", "SHA-12-002", retain_bill_items=True)
+    with pytest.raises(RequestValidationError):
+        await s.switch_intervention(
+            "SHA-12-001", "SHA-12-002", retain_bill_items=True, bill_from=datetime(2026, 9, 1, tzinfo=UTC)
+        )
+    await s.switch_intervention("SHA-12-001", "SHA-12-002", retain_bill_items=False)  # no dates needed
+    assert ClaimIntervention(
+        InterventionCode("SHA-1"), "x", PaymentMechanism.CAPITATION, False, False, " active "
+    ).is_active
+    assert not ClaimIntervention(
+        InterventionCode("SHA-1"), "x", PaymentMechanism.CAPITATION, False, False, "RETIRED"
+    ).is_active

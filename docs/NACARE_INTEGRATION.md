@@ -194,6 +194,16 @@ sends the OTP, desk B (empty browser) sees `OTP_SENT` and opens the visit, desk 
 UAT note: member `123456` (`CR5274957287918-1`) has no phone contact on DHA's side (`contact id 0 doesn't
 exist`), so OTP tests use `CR7678914660684-5`.
 
+**Check-in = start of the SHA visit (2026-09-21).** SHA is opt-in per visit by picking a scheme tile; then ≥1
+intervention, OTP sent, OTP typed → the Check-In button opens the SHA visit first (fail-fast), creates the
+Encounter with `sha-journey-id`/`sha-scheme` extensions, and `POST /claims/{id}/encounter` binds it. The journey
+also stores `scheme`/`scheme_policy_number` (migration `b2d4f6a8c0e2`). **Emergency:** picking only ECCIF
+interventions (`InterventionCoverage.is_emergency`, SDK 0.1.8) — or an Emergency encounter class — switches to
+`POST /api/v1/sha/emergency/open` (no OTP; attending doctor's HWR registration + brought_by/mode_of_arrival;
+notes defaulted). Contract-tested; not live-verifiable from the UAT facility (not accredited for emergency care,
+see WORKFLOWS §9.7). Errors reach the desk as plain language via `infrastructure/sha/friendly.py`
+(`{code, message, hint, technical, trace_id}`).
+
 Two SDK defects found and fixed by this stage: `slots=True` dataclasses used zero-arg `super()` (breaks on
 Python < 3.14); `ConsentToken` serialised to its raw value in snapshots (now redacted).
 

@@ -43,6 +43,11 @@ class ClaimIntervention:
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @property
+    def is_active(self) -> bool:
+        """ACTIVE on the visit (retired ones can only be restored)."""
+        return self.workflow_state.strip().upper() == "ACTIVE"
+
+    @property
     def preauth_outstanding(self) -> bool:
         return self.needs_preauth and not self.preauth_exists
 

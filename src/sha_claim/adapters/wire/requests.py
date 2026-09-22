@@ -26,6 +26,7 @@ from sha_claim.domain.identifiers import (
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, PreauthRequest
 from sha_claim.domain.prescription import DispenseRequest, MedicationOrder, PrescriptionRequest
+from sha_claim.errors import RequestValidationError, Violation
 
 
 def eligibility_check(identification_number: str, identification_type: IdentificationType) -> WireRequest:
@@ -108,6 +109,10 @@ def open_visit(
             body["auth_guid"] = guid
         case MatchId(value=match_id):
             body["match_id"] = match_id
+        case _:  # the server says so verbatim: "one of otp, auth_guid or match_id is required"
+            raise RequestValidationError(
+                [Violation("proof", f"expected Otp, BiometricGuid or MatchId, got {type(proof).__name__}")]
+            )
     return WireRequest("POST", "/claims/visit", json=body)
 
 

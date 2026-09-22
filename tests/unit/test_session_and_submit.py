@@ -643,3 +643,11 @@ async def test_set_coverage_validates_then_forwards() -> None:
         await s.set_coverage("CR1111111111111-1", " ")
     await s.set_coverage("CR1111111111111-1", "POMSF-1")
     assert gw.calls[-1][0] == "set_coverage"
+
+
+async def test_remove_doctor_and_its_emergency_alias_hit_one_endpoint() -> None:
+    gw = FakeEmergency()
+    s = ClaimSession(gateways(emergency=gw), TOKEN)
+    await s.remove_doctor()
+    await s.remove_emergency_doctor()
+    assert [c[0] for c in gw.calls] == ["remove_doctor", "remove_doctor"]

@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.11] — 2026-09-22
+
+### Added
+- `Authorization.proof` — an authorization returned by `authorize()` can be handed straight to `open_visit()`
+  as the `auth_guid` branch of `/claims/visit`; `open_visit` also accepts the `Authorization` itself.
+- `ClaimSession.remove_doctor()` — `DELETE /claims/doctors` under its general name (the endpoint is not
+  emergency-only); `remove_emergency_doctor()` stays as an alias.
+
+### Fixed
+- `open_visit` with a proof that is not an `Otp`, `BiometricGuid` or `MatchId` silently sent a request the
+  server always rejects ("one of otp, auth_guid or match_id is required"). It now raises
+  `RequestValidationError` before anything is sent.
+
+### Docs
+- WORKFLOWS §9.10: an unverified biometric authorization cannot open a visit ("Kindly ensure the biometrics
+  visit has been successfully verified"), and `/patients/sub-benefits` is facility-scoped.
+
 ## [0.1.10] — 2026-09-21
 
 ### Added

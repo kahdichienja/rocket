@@ -238,6 +238,13 @@ needs an HWR-registered practitioner.
    capitation intervention that had opened fine the day before. Nothing in the request changed. Treat the
    sandbox facility's contract as volatile; the SDK surfaces it as a `BadRequestError` and NaCare words it as
    `FACILITY_NOT_CONTRACTED`.
+10. **Consent needs a real channel (UAT 2026-09-22).** `authorize()` returns a PENDING authorization with a
+   guid even for a beneficiary with no phone on record, but `/claims/visit` with that guid is refused —
+   "Kindly ensure the biometrics visit has been successfully verified": the guid only works once a device has
+   verified the fingerprint. So a member with no phone and no biometric capture cannot open a visit at all.
+   Also: **`GET /patients/sub-benefits` is facility-scoped** — the same member returns 30 sub-benefits at one
+   facility and 0 at another, which is the cheapest way to see what a facility is contracted for before
+   attempting a visit.
 6. `POST /claims/doctors` validates the practitioner against the Health Worker Registry (upstream
    `edi-api.provider-uat.sha.go.ke`); a made-up registration number is rejected.
 

@@ -1,3 +1,5 @@
+import pytest
+
 from sha_claim.adapters.wire import requests
 from sha_claim.domain.codes import InterventionCode
 from sha_claim.domain.consent import BiometricGuid, MatchId, Otp
@@ -45,3 +47,15 @@ def test_send_visit_otp_request() -> None:
     r = requests.send_visit_otp(P, CODES)
     assert r.method == "POST" and r.path == "/claims/otp" and not r.idempotent
     assert r.json == {"patient_id": "CR1111111111111-1", "intervention_codes": ["SHA-12-001"]}
+
+
+def test_open_visit_accepts_each_proof_and_refuses_anything_else() -> None:
+    """UAT says it verbatim: "one of otp, auth_guid or match_id is required when starting a visit"."""
+    from sha_claim.errors import RequestValidationError
+
+    args = (PatientId("CR1111111111111-1"), ServiceType.OUTPATIENT, [InterventionCode("SHA-18-003")])
+    assert requests.open_visit(*args, Otp("123456")).json["otp"] == "123456"
+    assert requests.open_visit(*args, BiometricGuid("G-1")).json["auth_guid"] == "G-1"
+    assert requests.open_visit(*args, MatchId("M-1")).json["match_id"] == "M-1"
+    with pytest.raises(RequestValidationError, match="proof"):
+        requests.open_visit(*args, object())  # type: ignore[arg-type]

@@ -242,6 +242,10 @@ class ClaimSession:
         """`POST /claims/doctors` — attach the attending practitioner (HWR-registered). Required before `submit`."""
         return await self._gateway.add_doctor(self.consent_token, doctor)
 
+    async def remove_doctor(self) -> None:
+        """`DELETE /claims/doctors` — detach the attending practitioner (one doctor per claim, so no argument)."""
+        await self._emergency.remove_doctor(self.consent_token)
+
     async def close(self, reason: CancelReason, text: str) -> VirtualClaim:
         """`POST /claims/close` — abandon a claim that will not be submitted."""
         if not text.strip():
@@ -450,7 +454,8 @@ class ClaimSession:
         return await self._emergency.add_doctor(self.consent_token, doctor)
 
     async def remove_emergency_doctor(self) -> None:
-        await self._emergency.remove_doctor(self.consent_token)
+        """Same endpoint as `remove_doctor`; kept for symmetry with `add_emergency_doctor`."""
+        await self.remove_doctor()
 
     async def open_emt_claim(self, claim: EmtClaim) -> VirtualClaim:
         """`POST /claims/emt` — the ambulance provider's claim linked to this emergency case."""

@@ -71,6 +71,17 @@ class Authorization:
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @property
+    def proof(self) -> BiometricGuid:
+        """This authorization as consent proof for `open_visit` — the `auth_guid` branch of `/claims/visit`.
+
+        The route out when the beneficiary has no phone on record: `authorize()` still returns a PENDING
+        authorization, and its guid opens the visit without an OTP (verified on UAT 2026-09-22).
+        """
+        if not self.guid:
+            raise ValueError("authorization has no guid to use as consent proof")
+        return BiometricGuid(self.guid)
+
+    @property
     def is_pending(self) -> bool:
         return self.status == AuthorizationStatus.PENDING
 

@@ -232,11 +232,20 @@ class ClaimsResource:
         patient: PatientId | str,
         service_type: ServiceType,
         interventions: Sequence[InterventionCode | str],
-        proof: ConsentProof,
+        proof: ConsentProof | Authorization,
     ) -> ClaimSession:
-        """`POST /claims/visit` — opens the server-side virtual claim and returns a session bound to its consent token."""
+        """`POST /claims/visit` — opens the server-side virtual claim and returns a session bound to its consent token.
+
+        `proof` is the OTP the beneficiary read out, a `BiometricGuid`/`MatchId` from the biometric path, or
+        the `Authorization` that `consent.authorize()` returned (its guid is used).
+        """
         codes = [InterventionCode.of(c) for c in interventions]
-        claim = await self._open_visit.execute(PatientId.of(patient), service_type, codes, proof)
+        claim = await self._open_visit.execute(
+            PatientId.of(patient),
+            service_type,
+            codes,
+            proof.proof if isinstance(proof, Authorization) else proof,
+        )
         return ClaimSession(self._gateways, claim.consent_token, claim)
 
     def resume(self, consent_token: ConsentToken | str) -> ClaimSession:

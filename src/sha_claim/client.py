@@ -18,6 +18,7 @@ from sha_claim.adapters.wire.http_gateways import (
     HttpFileGateway,
     HttpPreauthGateway,
     HttpPrescriptionGateway,
+    HttpRegistryGateway,
     HttpVirtualClaimGateway,
 )
 from sha_claim.adapters.wire.transport import Transport
@@ -37,6 +38,7 @@ from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import ConsentToken, FacilityCode, FileId, PatientId
 from sha_claim.domain.identity import BearerToken, Identity
 from sha_claim.domain.practitioner import PractitionerRef
+from sha_claim.domain.registry import PatientContact, PatientRecord
 from sha_claim.errors import RequestValidationError, Violation
 from sha_claim.events import EventHook
 from sha_claim.facility import FacilityScope
@@ -49,6 +51,7 @@ from sha_claim.ports.clock import Clock
 from sha_claim.ports.consent_gateway import ConsentGateway
 from sha_claim.ports.eligibility_gateway import EligibilityGateway
 from sha_claim.ports.file_gateway import FileGateway
+from sha_claim.ports.registry_gateway import RegistryGateway
 from sha_claim.ports.token_provider import TokenProvider
 from sha_claim.session import ClaimSession
 from sha_claim.settings import SHASettings
@@ -256,6 +259,33 @@ class ClaimsResource:
         return ClaimSession(self._gateways, ConsentToken.of(consent_token))
 
 
+class RegistryResource:
+    """The Client Registry: turn an identity document into a CR number, and check the member is reachable.
+
+    Worth calling before consent: SHA sends the visit OTP only to a confirmed, active phone contact, and a
+    member with none cannot consent by OTP at all — `contacts()` says so without a failed attempt.
+    """
+
+    def __init__(self, gateway: RegistryGateway) -> None:
+        self._gateway = gateway
+
+    async def find_patient(
+        self,
+        identification_number: str,
+        identification_type: IdentificationType = IdentificationType.NATIONAL_ID,
+    ) -> PatientRecord | None:
+        """`GET /patients` — None when the registry holds nobody with that document."""
+        return await self._gateway.find_patient(identification_number, identification_type)
+
+    async def contacts(self, patient: PatientId | str) -> tuple[PatientContact, ...]:
+        """`GET /patients/contacts` — an empty tuple means the OTP path is closed for this member."""
+        return await self._gateway.contacts(PatientId.of(patient))
+
+    async def can_consent_by_otp(self, patient: PatientId | str) -> bool:
+        """Whether `consent.send_otp` can work: SHA needs a confirmed, active phone on record."""
+        return any(c.can_receive_otp for c in await self.contacts(patient))
+
+
 class EmergencyResource:
     """Emergency case claims: opened without prior OTP consent, billed by protocol."""
 
@@ -346,6 +376,7 @@ class AsyncSHAClient:
         )
         self.auth = AuthResource(self._tokens)
         self.eligibility = EligibilityResource(HttpEligibilityGateway(self._transport))
+        self.registries = RegistryResource(HttpRegistryGateway(self._transport))
         self.consent = ConsentResource(HttpConsentGateway(self._transport))
         gateways = ClaimGateways(
             claims=HttpVirtualClaimGateway(self._transport),

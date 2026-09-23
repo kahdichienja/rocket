@@ -418,3 +418,63 @@ async def test_utilization_accepts_list_page_and_bare_object(settings: SHASettin
         assert len(balances) == expected
         assert balances[0].individual_max == Money.kes(5000)
     assert [b.limit_scope for b in balances] == ["INDIVIDUAL"]
+
+
+@respx.mock
+async def test_registry_lookup_and_contactability(settings: SHASettings) -> None:
+    """The cheapest pre-flight there is: no phone contact → `send_otp` cannot work, whatever cover says."""
+    respx.post(f"{settings.api_root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
+    patient = respx.get(f"{settings.api_root}/patients").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "CR-2026-000256",
+                "resourceType": "Patient",
+                "first_name": "JANE",
+                "middle_name": "G",
+                "last_name": "CHEBET",
+                "date_of_birth": "1945-08-16",
+                "identification_type": "National ID",
+                "identification_number": "1000000256",
+                "other_identifications": [
+                    {"identification_type": "SHA Number", "identification_number": "SHA-9"}
+                ],
+                "dependants": [{"relationship": "Child", "total": 1, "result": [{"id": "CR-2026-000258"}]}],
+            },
+        )
+    )
+    contacts = respx.get(f"{settings.api_root}/patients/contacts")
+
+    async with AsyncSHAClient(settings) as sha:
+        record = await sha.registries.find_patient("1000000256")
+        assert record is not None
+        assert record.patient_id is not None and record.patient_id.value == "CR-2026-000256"
+        assert record.full_name == "JANE G CHEBET" and record.identification("SHA Number") == "SHA-9"
+        assert [d.value for d in record.dependant_ids] == ["CR-2026-000258"]
+
+        contacts.mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "count": 1,
+                    "results": [
+                        {
+                            "id": 982843,
+                            "contactValue": "+254710***256",
+                            "contactType": "PHO",
+                            "isConfirmed": True,
+                            "active": True,
+                            "isMainContact": True,
+                        }
+                    ],
+                },
+            )
+        )
+        assert await sha.registries.can_consent_by_otp("CR-2026-000256") is True
+
+        contacts.mock(return_value=httpx.Response(200, json={"count": 0, "results": []}))
+        assert await sha.registries.can_consent_by_otp("CR5274957287918-1") is False
+
+    assert patient.calls[0].request.url.params["identification_type"] == "National ID"

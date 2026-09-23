@@ -30,6 +30,7 @@ from sha_claim.adapters.wire.schemas.emergency import EmergencyProtocolWire
 from sha_claim.adapters.wire.schemas.files import DownloadLinkWire, StoredFileWire
 from sha_claim.adapters.wire.schemas.preauth import PreauthorizationWire
 from sha_claim.adapters.wire.schemas.prescription import DispenseWire, DosageWire, PrescriptionWire
+from sha_claim.adapters.wire.schemas.registry import PatientContactWire, PatientRecordWire
 from sha_claim.domain.benefits import (
     BedOccupancy,
     BenefitPackage,
@@ -74,6 +75,7 @@ from sha_claim.domain.identifiers import (
 from sha_claim.domain.money import Money
 from sha_claim.domain.preauth import Preauthorization
 from sha_claim.domain.prescription import Dispense, Dosage, Prescription
+from sha_claim.domain.registry import OtherIdentification, PatientContact, PatientRecord
 
 
 def to_eligibility(w: EligibilityWire) -> Eligibility:
@@ -89,6 +91,7 @@ def to_eligibility(w: EligibilityWire) -> Eligibility:
         is_alive=w.is_alive,
         whitelisted_for_otp=w.whitelisted_for_otp,
         facility_biometrics_enforced=w.facility_biometrics_enforced,
+        facility_contracts=tuple(w.facility_contracts or ()),
         extra=w.unmodelled(),
     )
 
@@ -511,3 +514,46 @@ def _optional_int(raw: str | float | int | None) -> int | None:
         return int(Decimal(str(raw))) if raw not in (None, "") else None
     except (InvalidOperation, ValueError):
         return None
+
+
+def to_patient_record(w: PatientRecordWire) -> PatientRecord:
+    dependants: list[PatientId] = []
+    for group in w.dependants:
+        for row in group.result:
+            dependant = _patient(str(row.get("id", "")))
+            if dependant is not None:
+                dependants.append(dependant)
+    return PatientRecord(
+        patient_id=_patient(w.id),
+        first_name=w.first_name,
+        middle_name=w.middle_name,
+        last_name=w.last_name,
+        gender=w.gender,
+        date_of_birth=parse_date(w.date_of_birth),
+        identification_type=w.identification_type,
+        identification_number=w.identification_number,
+        phone=w.phone,
+        citizenship=w.citizenship,
+        county=w.county,
+        sub_county=w.sub_county,
+        ward=w.ward,
+        other_identifications=tuple(
+            OtherIdentification(o.identification_type, o.identification_number)
+            for o in w.other_identifications
+        ),
+        dependant_ids=tuple(dependants),
+        extra=w.unmodelled(),
+    )
+
+
+def to_patient_contact(w: PatientContactWire) -> PatientContact:
+    return PatientContact(
+        contact_id=w.id,
+        value=w.contact_value,
+        contact_type=w.contact_type,
+        is_confirmed=w.is_confirmed,
+        is_active=w.active,
+        is_main=w.is_main_contact,
+        next_of_kin_full_name=w.next_of_kin_full_name,
+        extra=w.unmodelled(),
+    )

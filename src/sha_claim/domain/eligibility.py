@@ -56,13 +56,28 @@ class Eligibility:
     age: int | None = None
     is_alive: bool | None = None
     whitelisted_for_otp: bool = False
+    """False means SHA holds no phone contact for the member: `send_otp` will fail, whatever else is true."""
     facility_biometrics_enforced: bool = False
+    facility_contracts: tuple[str, ...] = ()
+    """Scheme names the acting facility is contracted for (UHC, SHIF, POMSF …). Empty when SHA sent none."""
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
     """Server fields the SDK does not model yet. Read-only escape hatch; never rely on it in domain logic."""
 
     @property
     def member_found(self) -> bool:
         return self.status == EligibilityStatus.MEMBER_FOUND and self.patient_id is not None
+
+    def can_consent_by_otp(self) -> bool:
+        """Whether `send_otp` can work at all: SHA must hold a phone contact for this member."""
+        return self.whitelisted_for_otp
+
+    def contracted_schemes_on(self, day: date) -> tuple[Scheme, ...]:
+        """Active schemes the acting facility may actually bill — the intersection SHA enforces at `open_visit`."""
+        active = self.active_schemes_on(day)
+        if not self.facility_contracts:
+            return active
+        allowed = {c.strip().upper() for c in self.facility_contracts}
+        return tuple(s for s in active if s.name.strip().upper() in allowed)
 
     def active_schemes_on(self, day: date) -> tuple[Scheme, ...]:
         return tuple(s for s in self.schemes if s.is_active_on(day))

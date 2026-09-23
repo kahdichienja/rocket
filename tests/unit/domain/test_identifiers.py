@@ -19,7 +19,7 @@ def test_patient_id_accepts_client_registry_numbers(raw: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "raw", ["CR-2026-000018", "12345678", "CR123", "CR7678914660684", "PAT-TEST/00021/26"]
+    "raw", ["12345678", "CR123", "CR7678914660684", "PAT-TEST/00021/26", "SHIF-EJKZZ4R5"]
 )
 def test_patient_id_rejects_non_cr_numbers(raw: str) -> None:
     with pytest.raises(ValueError, match="Client Registry"):
@@ -42,3 +42,12 @@ def test_consent_token_is_redacted_in_repr_and_str() -> None:
     assert "abcdefghijklmnop" not in repr(token)
     assert "abcdefghijklmnop" not in str(token)
     assert str(ConsentToken("short")) == "•••••"
+
+
+def test_patient_id_accepts_both_live_cr_formats() -> None:
+    """UAT 2026-09-23: `CR-2026-000256` alongside `CR7678914660684-5` — the strict form silently dropped members."""
+    assert PatientId("CR7678914660684-5").value == "CR7678914660684-5"
+    assert PatientId("CR-2026-000256").value == "CR-2026-000256"
+    for wrong in ("SHIF-EJKZZ4R5", "1000000256", "CR1", "CRABCDEFGHIJKLM-1", ""):
+        with pytest.raises(ValueError):
+            PatientId(wrong)

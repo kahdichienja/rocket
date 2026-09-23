@@ -36,6 +36,7 @@ class EligibilityWire(WireModel):
     is_alive: bool | None = None
     whitelisted_for_otp: bool = Field(False, alias="whitelistedForOTP")
     facility_biometrics_enforced: bool = False
+    facility_contracts: list[str] | None = None
     member_cr_number: str = ""
     full_name: str = ""
     status_code: str = ""

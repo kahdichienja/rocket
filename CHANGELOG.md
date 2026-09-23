@@ -4,6 +4,22 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.13] — 2026-09-23
+
+### Fixed
+- **`PatientId` rejected a valid Client Registry number.** Two formats are live on UAT at once:
+  `CR7678914660684-5` and `CR-2026-000256`. The strict form made `Eligibility.patient_id` `None` for any
+  member with the second, which also made `member_found` and `is_covered_on()` false — a fully covered member
+  looked uncovered and could not be used for anything downstream.
+
+### Added
+- `registries` resource — the Client Registry: `find_patient()` (`GET /patients`: identity document in, CR
+  number out) and `contacts()` / `can_consent_by_otp()` (`GET /patients/contacts`). An empty contact list is
+  exactly why `send_otp` fails with "the contact record … contact id 0 doesn't exist"; now it can be checked
+  before the attempt.
+- `Eligibility.facility_contracts` — the scheme names the acting facility is contracted for, which SHA sends
+  and the SDK was discarding; plus `contracted_schemes_on(day)` (active ∩ contracted) and `can_consent_by_otp`.
+
 ## [0.1.12] — 2026-09-23
 
 ### Fixed

@@ -40,6 +40,24 @@ def eligibility_check(identification_number: str, identification_type: Identific
     )
 
 
+def find_patient(identification_number: str, identification_type: IdentificationType) -> WireRequest:
+    """`GET /patients` — Client Registry lookup: an identity document in, a CR number out."""
+    return WireRequest(
+        "GET",
+        "/patients",
+        params={
+            "identification_number": identification_number,
+            "identification_type": identification_type.value,
+        },
+        retry_safe=True,
+    )
+
+
+def patient_contacts(patient: PatientId) -> WireRequest:
+    """`GET /patients/contacts` — the phones SHA can send an OTP to; empty means the OTP path is closed."""
+    return WireRequest("GET", "/patients/contacts", params={"patient_id": patient.value}, retry_safe=True)
+
+
 def benefits(patient: PatientId) -> WireRequest:
     return WireRequest("GET", "/patients/benefits", params={"patient_id": patient.value})
 

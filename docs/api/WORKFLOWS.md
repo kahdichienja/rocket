@@ -251,6 +251,13 @@ needs an HWR-registered practitioner.
    shape surfaced only now. `GET /facilities/{code}/beds/occupancy` is live and real (1889 normal beds, 93 ICU);
    `total_number_of_bed` can be 0 while the per-type counts are populated. `GET /patients/pomsf-balances`
    answers "Not Found" for a non-POMSF member.
+12. **Client Registry (UAT 2026-09-23).** `GET /patients?identification_number&identification_type` returns the
+   member record with `id` = the CR number, and `GET /patients/contacts?patient_id` returns
+   `{count, results[{contactValue (masked), contactType: "PHO", isConfirmed, active, isMainContact}]}`.
+   **`count: 0` is exactly the cause of "the contact record for beneficiary … contact id 0 doesn't exist"** —
+   check it before sending an OTP. Eligibility says the same thing in `whitelistedForOTP`, and also carries
+   `facilityContracts` (the schemes the acting facility may bill) and `facilityBiometricsEnforced`.
+   **Two CR formats are live at once**: `CR7678914660684-5` and `CR-2026-000256`.
 6. `POST /claims/doctors` validates the practitioner against the Health Worker Registry (upstream
    `edi-api.provider-uat.sha.go.ke`); a made-up registration number is rejected.
 

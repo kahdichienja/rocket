@@ -35,6 +35,7 @@ from sha_claim.adapters.wire.schemas.emergency import EmergencyProtocolWire
 from sha_claim.adapters.wire.schemas.files import DownloadLinkWire, StoredFileWire
 from sha_claim.adapters.wire.schemas.preauth import DoctorConsentWire, PreauthorizationWire
 from sha_claim.adapters.wire.schemas.prescription import DispenseWire, PrescriptionWire
+from sha_claim.adapters.wire.schemas.registry import PatientContactWire, PatientRecordWire
 from sha_claim.adapters.wire.transport import Transport, WireResponse
 from sha_claim.domain.attachments import Attachment
 from sha_claim.domain.benefits import (
@@ -78,6 +79,7 @@ from sha_claim.domain.identifiers import (
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, Preauthorization, PreauthRequest
 from sha_claim.domain.prescription import Dispense, DispenseRequest, Prescription, PrescriptionRequest
+from sha_claim.domain.registry import PatientContact, PatientRecord
 from sha_claim.errors import UnexpectedResponseError
 
 M = TypeVar("M", bound=BaseModel)
@@ -90,6 +92,29 @@ def parse_as(model: type[M], response: WireResponse) -> M:
         return model.model_validate(payload)
     except (ValueError, ValidationError) as exc:
         raise UnexpectedResponseError(f"{model.__name__}: {exc}") from exc
+
+
+class HttpRegistryGateway:
+    """Client Registry: `/patients` and `/patients/contacts`."""
+
+    def __init__(self, transport: Transport) -> None:
+        self._transport = transport
+
+    async def find_patient(
+        self, identification_number: str, identification_type: IdentificationType
+    ) -> PatientRecord | None:
+        response = await self._transport.send(
+            requests.find_patient(identification_number, identification_type)
+        )
+        if response.status == 404:
+            return None
+        return mappers.to_patient_record(parse_as(PatientRecordWire, response))
+
+    async def contacts(self, patient: PatientId) -> tuple[PatientContact, ...]:
+        page = parse_as(
+            Page[PatientContactWire], await self._transport.send(requests.patient_contacts(patient))
+        )
+        return tuple(mappers.to_patient_contact(c) for c in page.results)
 
 
 class HttpEligibilityGateway:

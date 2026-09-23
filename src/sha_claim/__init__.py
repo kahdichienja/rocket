@@ -70,6 +70,7 @@ from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
 from sha_claim.domain.prescription import Dispense, DispensedProduct, Dosage, MedicationOrder, Prescription
+from sha_claim.domain.registry import OtherIdentification, PatientContact, PatientRecord
 from sha_claim.errors import (
     AuthenticationError,
     BadRequestError,
@@ -95,7 +96,7 @@ from sha_claim.facility import (
 from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
-__version__ = "0.1.12"
+__version__ = "0.1.13"
 
 __all__ = [
     "AsyncSHAClient",
@@ -165,8 +166,11 @@ __all__ = [
     "NextOfKinContact",
     "NextOfKinIdType",
     "NotFoundError",
+    "OtherIdentification",
     "Otp",
+    "PatientContact",
     "PatientId",
+    "PatientRecord",
     "PayerClaimRecord",
     "PaymentMechanism",
     "PermissionDeniedError",

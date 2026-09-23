@@ -27,16 +27,19 @@ class Identifier:
         return value if isinstance(value, cls) else cls(str(value))
 
 
-_CR_NUMBER = re.compile(r"^CR\d{13}-\d$")
+#: Two Client Registry formats are live on UAT at once: `CR7678914660684-5` (13 digits + check digit) and
+#: `CR-2026-000256` (CR-YYYY-serial). Both are accepted; the guard exists to catch an HMIS patient number or a
+#: policy number being passed as a CR, which DHA itself will not refuse.
+_CR_NUMBER = re.compile(r"^(CR\d{13}-\d|CR-\d{4}-\d{4,})$")
 
 
 @dataclass(frozen=True, slots=True)
 class PatientId(Identifier):
     """Client Registry (CR) number of a beneficiary — `patient_id` throughout the API.
 
-    Format observed on DHA: `CR` + 13 digits + `-` + check digit (`CR7678914660684-5`). DHA accepts *any*
-    string here and will happily create authorizations against an HMIS's internal patient number, so the
-    shape is enforced before a request leaves.
+    Two formats are in use on DHA: `CR` + 13 digits + `-` + check digit (`CR7678914660684-5`) and
+    `CR-YYYY-serial` (`CR-2026-000256`). DHA accepts *any* string here and will happily create
+    authorizations against an HMIS's internal patient number, so the shape is checked before a request leaves.
     """
 
     def __post_init__(self) -> None:
@@ -44,7 +47,7 @@ class PatientId(Identifier):
         value = self.value.upper()
         if not _CR_NUMBER.match(value):
             raise ValueError(
-                f"{self.value!r} is not a Client Registry number (expected CR + 13 digits + '-' + check digit)"
+                f"{self.value!r} is not a Client Registry number (expected CR7678914660684-5 or CR-2026-000256)"
             )
         object.__setattr__(self, "value", value)
 

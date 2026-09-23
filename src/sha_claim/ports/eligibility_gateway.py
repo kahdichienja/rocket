@@ -33,7 +33,9 @@ class EligibilityGateway(EligibilityCheck, Protocol):
         self, patient: PatientId, sub_benefit_code: str
     ) -> tuple[InterventionCoverage, ...]: ...
 
-    async def utilization(self, patient: PatientId, intervention: InterventionCode) -> UtilizationBalance: ...
+    async def utilization(
+        self, patient: PatientId, intervention: InterventionCode
+    ) -> tuple[UtilizationBalance, ...]: ...
 
     async def pomsf_balances(
         self, patient: PatientId, policy_year: str, principal_member_number: str | None

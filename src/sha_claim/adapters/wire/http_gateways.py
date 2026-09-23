@@ -117,9 +117,19 @@ class HttpEligibilityGateway:
         page = parse_as(Page[InterventionWire], response)
         return tuple(mappers.to_intervention_coverage(i) for i in page.results)
 
-    async def utilization(self, patient: PatientId, intervention: InterventionCode) -> UtilizationBalance:
+    async def utilization(
+        self, patient: PatientId, intervention: InterventionCode
+    ) -> tuple[UtilizationBalance, ...]:
         response = await self._transport.send(requests.utilization(patient, intervention))
-        return mappers.to_utilization(parse_as(UtilizationWire, response))
+        raise_for_status(response)
+        # Observed on UAT (2026-09-22): a bare list of records, one per limit scope; the portal documents a
+        # single object, and a `{pageSize, results}` page is the house style. Accept all three.
+        try:
+            payload: Any = response.json()
+            rows = payload.get("results", [payload]) if isinstance(payload, dict) else payload
+            return tuple(mappers.to_utilization(UtilizationWire.model_validate(r)) for r in rows)
+        except (ValueError, ValidationError) as exc:
+            raise UnexpectedResponseError(f"{UtilizationWire.__name__}: {exc}") from exc
 
     async def pomsf_balances(
         self, patient: PatientId, policy_year: str, principal_member_number: str | None

@@ -3,6 +3,7 @@ import pytest
 import respx
 
 from sha_claim import AsyncSHAClient, IdentificationType
+from sha_claim.domain.money import Money
 from sha_claim.settings import SHASettings
 from tests.conftest import load_fixture
 
@@ -391,3 +392,29 @@ async def test_consent_list_filters_out_other_beneficiaries(settings: SHASetting
     async with AsyncSHAClient(settings) as sha:
         listed = await sha.consent.list("CR0000000000000-0")
     assert [a.guid for a in listed] == [mine["guid"]]
+
+
+@respx.mock
+async def test_utilization_accepts_list_page_and_bare_object(settings: SHASettings) -> None:
+    """UAT (2026-09-22) answers with a bare list, one record per limit scope; the portal documents one object."""
+    respx.post(f"{settings.api_root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
+    record = {
+        "code": "SHA-18-003",
+        "crId": "CR1111111111111-1",
+        "limitScope": "INDIVIDUAL",
+        "individualMaxLimit": 5000,
+    }
+    route = respx.get(f"{settings.api_root}/patients/benefits/utilization")
+    for payload, expected in (
+        ([record, {**record, "limitScope": "HOUSEHOLD"}], 2),
+        ({"pageSize": 1, "results": [record]}, 1),
+        (record, 1),
+    ):
+        route.mock(return_value=httpx.Response(200, json=payload))
+        async with AsyncSHAClient(settings) as sha:
+            balances = await sha.eligibility.utilization("CR1111111111111-1", "SHA-18-003")
+        assert len(balances) == expected
+        assert balances[0].individual_max == Money.kes(5000)
+    assert [b.limit_scope for b in balances] == ["INDIVIDUAL"]

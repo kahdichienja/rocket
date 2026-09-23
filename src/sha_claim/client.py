@@ -139,8 +139,11 @@ class EligibilityResource:
 
     async def utilization(
         self, patient: PatientId | str, intervention: InterventionCode | str
-    ) -> UtilizationBalance:
-        """`GET /patients/benefits/utilization` — remaining limits for one intervention. (Returned 400 upstream on UAT, 2026-09.)"""
+    ) -> tuple[UtilizationBalance, ...]:
+        """`GET /patients/benefits/utilization` — remaining limits for one intervention.
+
+        One record per limit scope (individual, household, fund …); UAT returns a bare list.
+        """
         return await self._gateway.utilization(PatientId.of(patient), InterventionCode.of(intervention))
 
     async def pomsf_balances(

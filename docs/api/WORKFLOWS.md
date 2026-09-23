@@ -245,6 +245,12 @@ needs an HWR-registered practitioner.
    Also: **`GET /patients/sub-benefits` is facility-scoped** — the same member returns 30 sub-benefits at one
    facility and 0 at another, which is the cheapest way to see what a facility is contracted for before
    attempting a visit.
+11. **Reference endpoints (UAT 2026-09-22/23, facility FID-47-108521-3 KENYATTA NATIONAL HOSPITAL).**
+   `GET /patients/benefits/utilization` returns a **bare list**, one record per limit scope (`limitScope`),
+   not the single object the portal documents — it had been answering 400 upstream until this facility, so the
+   shape surfaced only now. `GET /facilities/{code}/beds/occupancy` is live and real (1889 normal beds, 93 ICU);
+   `total_number_of_bed` can be 0 while the per-type counts are populated. `GET /patients/pomsf-balances`
+   answers "Not Found" for a non-POMSF member.
 6. `POST /claims/doctors` validates the practitioner against the Health Worker Registry (upstream
    `edi-api.provider-uat.sha.go.ke`); a made-up registration number is rejected.
 

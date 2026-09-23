@@ -4,6 +4,17 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.12] — 2026-09-23
+
+### Fixed
+- **Breaking:** `eligibility.utilization()` returns `tuple[UtilizationBalance, ...]`, not one object. UAT answers
+  with a bare list — one record per limit scope — which raised `UnexpectedResponseError` the first time the
+  endpoint returned data (it had 400'd upstream until now). A bare object and a `{pageSize, results}` page are
+  still accepted.
+
+### Docs
+- WORKFLOWS §9.11: `/patients/benefits/utilization` shape; `/facilities/{code}/beds/occupancy` verified live.
+
 ## [0.1.11] — 2026-09-22
 
 ### Added

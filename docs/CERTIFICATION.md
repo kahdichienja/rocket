@@ -66,7 +66,7 @@ Legend: ✅ covered · 🟡 partial · 🔲 HMIS responsibility · ❌ gap
 
 | | Status | Evidence |
 |---|---|---|
-| Developer documentation | ✅ | `docs/GUIDE.md` (every method: params, wire call, result), `docs/ARCHITECTURE.md`, `docs/api/*` reference with examples, Postman collection |
+| Developer documentation | ✅ | `README.md` — the full consumer guide (every method: params, wire call, result; recipes; gotchas; result-object appendix), `docs/ARCHITECTURE.md`, `docs/api/*` reference with examples, Postman collection |
 | Errors are actionable | ✅ | human message + `trace_id`; local violations name the field |
 | API designed to prevent misuse | ✅ | redacted `ConsentToken`/`Otp`, `Money` refuses floats, strict request enums, `service_type_for_authorization` |
 | End-user (clinician/biller) training and UI guidance | 🔲 HMIS | Out of SDK scope |

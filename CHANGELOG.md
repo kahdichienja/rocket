@@ -4,11 +4,47 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.18] — 2026-09-25
+
+Documentation only — no code changes, so nothing to upgrade for.
+
+### Docs
+- **The consumer guide is now the README.** It was a pointer to `docs/GUIDE.md`; the guide now *is* the
+  README, so the one document a consumer needs is the first thing they see on GitHub and on PyPI.
+  `docs/GUIDE.md` remains as a stub with section links, and the `Documentation` project URL follows.
+- Documented two resources that had never been written up: **`sha.auth`** (`identity()`, `check()`,
+  `token()` — "which facility am I", without parsing a JWT) and **`sha.registries`** (§6.4 — the Client
+  Registry, and `can_consent_by_otp()`, which answers before a failed authorize whether SHA can reach
+  the member at all).
+- WORKFLOWS §3.1: the `PER DIEM` mechanism, the four interventions carrying it, and why
+  `intervention_overall_tariff` is `0.00` on all of them in UAT (a missing facility KEPH level, not the
+  blanket zero-balance problem).
+- WORKFLOWS §6.1: `patient_instruction` remains unanswerable from any published source — 36 candidates
+  rejected, including every member of DHA's own `PRESCRIPTION-CONDITION-KENYA` value set, all 40
+  administrative routes, free text and integer choices. The live portal page carries enumerations for 14
+  other fields and none for this one. Recorded with the elimination table so it is not re-guessed.
+- Corrected two errors in the guide: the `discharge()` recipe passed a `discharge_date` parameter that
+  does not exist (it is `discharged_at`, defaulting to now), and `dispense()` was documented against the
+  portal's `/prescriptions/dispenses`, which 404s — UAT serves the singular, as the SDK has sent since
+  0.1.14.
+
+
 ## [0.1.17] — 2026-09-24
 
 ### Added
-- Per-diem accrual fields on claim interventions: `is_per_diem`, `accrued_per_diem_days`, `accrued_per_diem_amount`, and `per_diem_allowance`.
-- Payment mechanism and scheme mappings for inpatient per-diem stays.
+- **`PaymentMechanism.PER_DIEM` — SHA's bed rebate.** Critical care (`SHA-03-*`: ICU, HDU, NICU, burns) is
+  paid by the day, not the item, and SHA accrues the stay itself. The mechanism is named nowhere in the
+  portal spec and the fields that carry the accrual have empty descriptions, so this is modelled from
+  observed UAT behaviour.
+- `ClaimIntervention.is_per_diem`, `.accrued_per_diem_days`, `.accrued_per_diem`, `.keph_level_tariff`
+  (SHA spells the wire field `kephLevelTarrif`), and `.per_diem_allowance` — what SHA will pay for the
+  stay so far. It prefers SHA's own accrual, falls back to `keph_level_tariff × accrued_per_diem_days`,
+  and returns **`None`, never zero**, when it knows neither: every per-diem intervention on UAT returns a
+  `0.00` tariff because no rate is published for the facility's KEPH level, and a zero there would read as
+  "SHA pays nothing" and push a covered stay onto the patient.
+- `ClaimLine.rebate_amount`, `.sponsor_net`, `.patient_net`, `.benefit_exceeded` — how SHA splits a line
+  between sponsor and patient. Computed by SHA and returned only; populated on lines read back from
+  `preview()`, not on the line `add_line()` returns. The wire still calls the first `nhifRebateAmount`.
 
 ## [0.1.16] — 2026-09-24
 

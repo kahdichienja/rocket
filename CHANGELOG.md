@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.16] — 2026-09-24
+
+### Fixed
+- `registries.find_patient()` raised instead of returning `None` when the Client Registry holds nobody with
+  that document: UAT answers `400 "zero results found in client registry"` rather than 404. A genuine failure
+  still raises, so a registry outage is never mistaken for an unknown patient.
+
 ## [0.1.15] — 2026-09-24
 
 ### Added

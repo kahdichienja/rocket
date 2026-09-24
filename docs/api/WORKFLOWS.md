@@ -257,7 +257,8 @@ needs an HWR-registered practitioner.
    **`count: 0` is exactly the cause of "the contact record for beneficiary … contact id 0 doesn't exist"** —
    check it before sending an OTP. Eligibility says the same thing in `whitelistedForOTP`, and also carries
    `facilityContracts` (the schemes the acting facility may bill) and `facilityBiometricsEnforced`.
-   **Two CR formats are live at once**: `CR7678914660684-5` and `CR-2026-000256`.
+   **Two CR formats are live at once**: `CR7678914660684-5` and `CR-2026-000256`. A document nobody holds
+   answers **400 `zero results found in client registry`**, not 404.
 13. **ePrescriptions on UAT (2026-09-24).** The family is only partly usable:
    - `POST /prescriptions` is reachable but blocked by three **undocumented controlled vocabularies**:
      `generic_concept_code`, `dose_unit` and `patient_instruction`. Words (`TABLET`, `MG`, `ORAL`), numeric ids

@@ -2,7 +2,7 @@ import httpx
 import pytest
 import respx
 
-from sha_claim import AsyncSHAClient, IdentificationType
+from sha_claim import AsyncSHAClient, IdentificationType, SHAClaimError
 from sha_claim.domain.money import Money
 from sha_claim.settings import SHASettings
 from tests.conftest import load_fixture
@@ -478,3 +478,35 @@ async def test_registry_lookup_and_contactability(settings: SHASettings) -> None
         assert await sha.registries.can_consent_by_otp("CR5274957287918-1") is False
 
     assert patient.calls[0].request.url.params["identification_type"] == "National ID"
+
+
+@respx.mock
+async def test_registry_lookup_of_an_unknown_document_is_not_an_error(settings: SHASettings) -> None:
+    """UAT answers 400 "zero results found in client registry", not 404 — a miss must still read as None."""
+    respx.post(f"{settings.api_root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
+    route = respx.get(f"{settings.api_root}/patients")
+    for response in (
+        httpx.Response(
+            400,
+            json={
+                "error": "Bad Request",
+                "message": "failed to get patient record: zero results found in client registry fetch patient search response",
+            },
+        ),
+        httpx.Response(404, json={"error": "Not Found"}),
+    ):
+        route.mock(return_value=response)
+        async with AsyncSHAClient(settings) as sha:
+            assert await sha.registries.find_patient("00000000000") is None
+
+    # A genuine failure still raises, so a registry outage is never mistaken for an unknown patient.
+    route.mock(
+        return_value=httpx.Response(
+            400, json={"error": "Bad Request", "message": "malformed identification type"}
+        )
+    )
+    async with AsyncSHAClient(settings) as sha:
+        with pytest.raises(SHAClaimError):
+            await sha.registries.find_patient("1000000256")

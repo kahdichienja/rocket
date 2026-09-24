@@ -106,7 +106,11 @@ class HttpRegistryGateway:
         response = await self._transport.send(
             requests.find_patient(identification_number, identification_type)
         )
-        if response.status == 404:
+        # "Nobody by that document" is not an error: UAT answers 400 "zero results found in client registry"
+        # rather than 404, and a caller asking "do we know this person?" wants None, not an exception.
+        if response.status == 404 or (
+            response.status == 400 and b"zero results found" in response.body.lower()
+        ):
             return None
         return mappers.to_patient_record(parse_as(PatientRecordWire, response))
 

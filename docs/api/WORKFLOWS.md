@@ -258,6 +258,20 @@ needs an HWR-registered practitioner.
    check it before sending an OTP. Eligibility says the same thing in `whitelistedForOTP`, and also carries
    `facilityContracts` (the schemes the acting facility may bill) and `facilityBiometricsEnforced`.
    **Two CR formats are live at once**: `CR7678914660684-5` and `CR-2026-000256`.
+13. **ePrescriptions on UAT (2026-09-24).** The family is only partly usable:
+   - `POST /prescriptions` is reachable but blocked by three **undocumented controlled vocabularies**:
+     `generic_concept_code`, `dose_unit` and `patient_instruction`. Words (`TABLET`, `MG`, `ORAL`), numeric ids
+     and an empty string are all refused with `"X" is not a valid choice`, and none appear in the portal spec.
+     `patient_instruction` is *required* — `""` is refused — so a prescription cannot be filed at all until DHA
+     publishes the dictionaries.
+   - `GET /prescriptions` answers **403 insufficient permissions** for this client (same entitlement gap as
+     `POST /authorizations/covers`).
+   - **`POST /prescriptions/dispense` is singular**; the documented `/prescriptions/dispenses` 404s. It
+     validates and reaches the engine, which then asks for a prescription to exist first
+     ("Prescription matching query does not exist"). It also refuses `registration_number` for the dispenser
+     and wants `National ID` — the only place in the API where a practitioner is identified that way.
+   - The dispensing intervention is one per visit, not one per drug: `PMF-12-004` (Public Officers) /
+     `SHA-12-004` — "Prescription, drug administration and dispensing".
 6. `POST /claims/doctors` validates the practitioner against the Health Worker Registry (upstream
    `edi-api.provider-uat.sha.go.ke`); a made-up registration number is rejected.
 

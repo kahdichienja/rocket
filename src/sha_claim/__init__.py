@@ -96,7 +96,7 @@ from sha_claim.facility import (
 from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
-__version__ = "0.1.13"
+__version__ = "0.1.14"
 
 __all__ = [
     "AsyncSHAClient",

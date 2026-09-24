@@ -502,10 +502,16 @@ def get_prescription(token: ConsentToken) -> WireRequest:
     return WireRequest("GET", "/prescriptions", params={"consent_token": token.value})
 
 
+def _dispenser_id_type(kind: IdentificationType) -> IdentificationType:
+    """`/prescriptions/dispense` rejects `registration_number`; fall back to the member-style National ID."""
+    return IdentificationType.NATIONAL_ID if kind is IdentificationType.REGISTRATION_NUMBER else kind
+
+
 def create_dispense(token: ConsentToken, request: DispenseRequest) -> WireRequest:
     return WireRequest(
         "POST",
-        "/prescriptions/dispenses",
+        # Singular. The portal documents `/prescriptions/dispenses`, which 404s on UAT (2026-09-24).
+        "/prescriptions/dispense",
         json={
             "consent_token": token.value,
             "intervention_code": request.intervention_code.value,
@@ -517,10 +523,13 @@ def create_dispense(token: ConsentToken, request: DispenseRequest) -> WireReques
                 }
                 for p in request.products
             ],
+            # This endpoint takes an identity document for the dispenser, not a practitioner registration:
+            # UAT refuses `registration_number` here ("is not a valid choice") and accepts `National ID`,
+            # unlike every other practitioner field in the API.
             "doctors": [
                 {
                     "identification_number": d.identification_number,
-                    "identification_type": d.identification_type.value,
+                    "identification_type": _dispenser_id_type(d.identification_type).value,
                 }
                 for d in request.dispensers
             ],

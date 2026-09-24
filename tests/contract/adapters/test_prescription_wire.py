@@ -69,6 +69,9 @@ def test_create_dispense_body_matches_portal_field_names() -> None:
         "total_quantity": 15,
         "medication_price": 12.5,
     }
+    # UAT (2026-09-24): singular path, and this endpoint alone refuses `registration_number` for the dispenser.
+    assert r.path == "/prescriptions/dispense"
+    assert r.json["doctors"][0]["identification_type"] == "National ID"
 
 
 def test_get_and_remove_doctor_requests() -> None:

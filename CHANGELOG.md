@@ -4,6 +4,19 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.14] — 2026-09-24
+
+### Fixed
+- **`dispense()` posted to a path that does not exist.** The portal documents `/prescriptions/dispenses`; UAT
+  serves `/prescriptions/dispense` (singular) and 404s the plural.
+- **`dispense()` sent an identification type UAT refuses.** That endpoint alone rejects `registration_number`
+  for the dispenser ("is not a valid choice") and accepts `National ID`, unlike every other practitioner field.
+
+### Docs
+- WORKFLOWS §9.13: the ePrescription family on UAT — `POST /prescriptions` is blocked by three undocumented
+  vocabularies (`generic_concept_code`, `dose_unit`, `patient_instruction`), `GET /prescriptions` answers 403
+  for this client, and `dispense` works but needs a prescription first.
+
 ## [0.1.13] — 2026-09-23
 
 ### Fixed

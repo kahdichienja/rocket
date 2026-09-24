@@ -261,7 +261,7 @@ async def test_prescribe_and_dispense_over_http(settings: SHASettings) -> None:
             json={"guid": "rx", "code": "RX-1", "status": "ACTIVE", "intervention": {"code": "SHA-12-004"}},
         )
     )
-    respx.post(f"{root}/prescriptions/dispenses").mock(
+    respx.post(f"{root}/prescriptions/dispense").mock(
         return_value=httpx.Response(
             200,
             json={

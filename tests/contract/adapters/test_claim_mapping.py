@@ -128,3 +128,84 @@ def test_real_uat_visit_response_maps() -> None:
     )
     assert claim.invoices[0].workflow_state == "VALID" and claim.invoice_number is not None
     assert claim.is_zero and claim.submission_blockers()[0].code == "NO_BILLING_LINES"
+
+
+def test_per_diem_intervention_carries_sha_accrual() -> None:
+    """ICU/HDU care is paid by the day; SHA accrues the days itself and says what they have earned."""
+    i = mappers.to_claim_intervention(
+        ClaimInterventionWire.model_validate(
+            {
+                "intervention_code": "SHA-03-001",
+                "intervention_name": "ICU CARE",
+                "intervention_payment_mechanism": "PER DIEM",
+                "workflow_state": "ACTIVE",
+                "accrued_per_diem_days": 4,
+                "accrued_per_diem_amount": "18000",
+                "keph_level_tarrif": "4500",
+                "bill_from": "2026-09-20T08:00:00Z",
+            }
+        )
+    )
+    assert i.is_per_diem and i.accrued_per_diem_days == 4
+    assert i.per_diem_allowance == Money.kes(Decimal("18000"))
+
+
+def test_per_diem_allowance_falls_back_to_the_keph_rate_when_sha_publishes_no_accrual() -> None:
+    """Every UAT facility today: the rate is per KEPH level and none is set, so the accrual reads 0."""
+    i = mappers.to_claim_intervention(
+        ClaimInterventionWire.model_validate(
+            {
+                "intervention_code": "SHA-03-002",
+                "intervention_payment_mechanism": "PER DIEM",
+                "accrued_per_diem_days": 3,
+                "accrued_per_diem_amount": 0,
+                "keph_level_tarrif": "2500",
+            }
+        )
+    )
+    assert i.per_diem_allowance == Money.kes(Decimal("7500"))
+
+
+def test_per_diem_allowance_is_silent_rather_than_zero_when_sha_knows_nothing() -> None:
+    """A zero allowance would read as 'SHA pays nothing' and push a covered stay onto the patient."""
+    i = mappers.to_claim_intervention(
+        ClaimInterventionWire.model_validate(
+            {
+                "intervention_code": "SHA-03-003",
+                "intervention_payment_mechanism": "PER DIEM",
+                "accrued_per_diem_days": 2,
+                "accrued_per_diem_amount": 0,
+                "keph_level_tarrif": 0,
+            }
+        )
+    )
+    assert i.per_diem_allowance is None
+
+
+def test_fee_for_service_intervention_is_not_per_diem() -> None:
+    i = mappers.to_claim_intervention(
+        ClaimInterventionWire.model_validate(
+            {"intervention_code": "SHA-19-119", "intervention_payment_mechanism": "FEE FOR SERVICE"}
+        )
+    )
+    assert not i.is_per_diem and i.per_diem_allowance is None
+
+
+def test_claim_line_carries_what_sha_settled_and_what_it_left_the_patient() -> None:
+    line = mappers.to_claim_line(
+        ClaimLineWire.model_validate(
+            {
+                "id": "L9",
+                "intervention_code": "SHA-03-001",
+                "line_total_amount": "5000",
+                "nhif_rebate_amount": "4500",
+                "sponsor_net_price": "4500",
+                "patient_net_price": "500",
+                "uhc_exceeded": True,
+            }
+        )
+    )
+    assert line.rebate_amount == Money.kes(Decimal("4500"))
+    assert line.sponsor_net == Money.kes(Decimal("4500"))
+    assert line.patient_net == Money.kes(Decimal("500"))
+    assert line.benefit_exceeded

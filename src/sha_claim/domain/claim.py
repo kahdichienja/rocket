@@ -49,7 +49,40 @@ class ClaimIntervention:
     required_preauth_document_types: tuple[str, ...] = ()
     bill_from: datetime | None = None
     bill_to: datetime | None = None
+    #: Days of stay SHA has accrued against this intervention, and what they have earned.
+    accrued_per_diem_days: int = 0
+    accrued_per_diem: Money | None = None
+    #: The daily rate for this facility's KEPH level. SHA returns 0 where no rate is published for it.
+    keph_level_tariff: Money | None = None
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
+
+    @property
+    def is_per_diem(self) -> bool:
+        """Paid by the day rather than by the item — SHA's bed rebate (ICU, HDU, NICU, burns)."""
+        return self.payment_mechanism == PaymentMechanism.PER_DIEM
+
+    @property
+    def per_diem_allowance(self) -> Money | None:
+        """
+        What SHA will pay for the stay so far, for a bed the patient is in.
+
+        SHA's own accrual is authoritative when it has published one. Where it has not — every UAT
+        facility today, because the rate is per KEPH level and none is set — the days and the rate are
+        still enough to work it out, and a caller that can price the stay should not be left with
+        nothing. Returns None when neither is available: silence, rather than a zero that reads as
+        "SHA pays nothing" and would push a covered stay onto the patient.
+        """
+        if self.accrued_per_diem is not None and self.accrued_per_diem.amount > 0:
+            return self.accrued_per_diem
+        if (
+            self.keph_level_tariff is not None
+            and self.keph_level_tariff.amount > 0
+            and self.accrued_per_diem_days > 0
+        ):
+            return Money(
+                self.keph_level_tariff.amount * self.accrued_per_diem_days, self.keph_level_tariff.currency
+            )
+        return None
 
     @property
     def is_active(self) -> bool:
@@ -87,6 +120,12 @@ class ClaimLine:
     charge_date: date | None = None
     is_active: bool = True
     doctor_name: str = ""
+    #: What SHA settles on this line, and what it leaves to the patient. SHA computes both; we never send them.
+    rebate_amount: Money | None = None
+    sponsor_net: Money | None = None
+    patient_net: Money | None = None
+    #: SHA flagged this line as taking the member past a UHC limit.
+    benefit_exceeded: bool = False
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
 

@@ -31,6 +31,11 @@ class ClaimInterventionWire(WireModel):
     required_preauth_document_types: list[str] = Field(default_factory=list)
     bill_from: str = ""
     bill_to: str = ""
+    # What a PER DIEM intervention has earned so far. SHA accrues these itself over `bill_from`..`bill_to`;
+    # the tariff is per KEPH level, which is why `intervention_overall_tariff` can be 0 while a rate exists.
+    accrued_per_diem_amount: Number = None
+    accrued_per_diem_days: int | None = None
+    keph_level_tarrif: Number = None  # SHA's spelling
 
 
 class ClaimDiagnosisWire(WireModel):
@@ -56,6 +61,11 @@ class ClaimLineWire(WireModel):
     charge_date: str = ""
     is_active: bool = True
     doctor_name: str = ""
+    # What SHA worked out for this line. `nhif_rebate_amount` keeps the pre-SHA name on the wire.
+    nhif_rebate_amount: Number = None
+    sponsor_net_price: Number = None
+    patient_net_price: Number = None
+    uhc_exceeded: bool = False
 
 
 class ClaimAttachmentWire(WireModel):

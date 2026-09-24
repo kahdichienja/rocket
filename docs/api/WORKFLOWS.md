@@ -87,6 +87,38 @@ POST /claims/submit ...
 ```
 If the beneficiary cannot consent: `POST /patients/next-of-kin/contacts {consent_token, next_of_kin_*}` first.
 
+### 3.1 The bed rebate — `PER DIEM` (undocumented; observed UAT 2026-09-24)
+
+Critical care is not billed by the item. `GET /eligibility/{cr}/interventions?sub_benefit_code=SHA-03-SC-01`
+returns every intervention with `intervention_payment_mechanism: "PER DIEM"`:
+
+| Code | Name |
+|---|---|
+| `SHA-03-001` | ICU CARE |
+| `SHA-03-002` | HDU CARE |
+| `SHA-03-003` | NICU CARE |
+| `SHA-03-005` | INTENSIVE CARE BURNS UNIT |
+
+SHA accrues the stay itself. On the claim intervention it returns, all with **empty descriptions in the spec**:
+
+| Field | Meaning |
+|---|---|
+| `accruedPerDiemDays` | days of stay accrued so far |
+| `accruedPerDiemAmount` | what those days have earned |
+| `billFrom` / `billTo` | the window being accrued over |
+| `kephLevelTarrif` | the daily rate **for this facility's KEPH level** (SHA's spelling) |
+
+And on each claim line: `nhifRebateAmount` (pre-SHA name retained), `sponsorNetPrice`, `patientNetPrice`,
+`uhcExceeded`. All are computed by SHA and returned only — never sent.
+
+**The rate is per KEPH level**, which is why `intervention_overall_tariff` comes back `0.00` on every per-diem
+intervention in UAT while surgical fee-for-service tariffs are real (`SHA-19-119 Appendicectomy` = 67,200).
+That is a *missing facility level*, not the blanket zero-balance problem — see §10.
+
+Modelled as `PaymentMechanism.PER_DIEM`, `ClaimIntervention.is_per_diem` and `.per_diem_allowance`, which falls
+back to `kephLevelTarrif × accruedPerDiemDays` when SHA publishes no accrual, and returns `None` rather than
+zero when it knows neither — a zero reads as "SHA pays nothing" and would push a covered stay onto the patient.
+
 ## 4. Pre-authorization (when `needsPreauth` is true / the benefit requires it)
 
 ```
@@ -131,6 +163,59 @@ GET  /prescriptions?consent_token
 POST /prescriptions/dispenses {consent_token, intervention_code, actual_products[], doctors[]}
 DELETE /prescriptions/doctors {consent_token, intervention_code, practitioner_registration_number}
 ```
+
+### 6.1 Observed on UAT (2026-09-24) — the vocabularies, and the order of operations
+
+**Dispensing needs a prescription filed with SHA first.** `POST /prescriptions/dispense` against a claim with
+no prescription answers `404 Prescription matching query does not exist.` The product code is **not** what it
+is complaining about: a real facility code (`PH14941`), a Medplum UUID and the literal string
+`ZZZ-NONSENSE-999` all return that same 404 on the same claim. Anything that dispenses must create the
+prescription first.
+
+**`dose_unit` is a short, lower-case list — and it is neither published registry.** Established by testing
+(2026-09-24). Accepted:
+
+> tablet · capsule · ml · mg · g · syrup · cream · ointment · vial · sachet · patch · bottle
+
+Refused: each · ampule · drop · drops · injection · suspension · suppository · iu · gel · spray · tube · powder ·
+solution — and `"Tablet"`, the same word capitalised.
+
+Neither national list explains it. `HPT/Units` publishes 494 units including `drop`, `each` and `ampule`, all
+refused; `ECLAIMS/UNITS-OF-MEASURE-KENYA` publishes eleven and does not contain `tablet`, which is accepted. The
+list above is the best known one, not a proven complete one. Mirrored for the UI in
+`Nacare/src/sha/prescriptionVocabulary.ts`.
+
+**`patient_instruction` is required and closed, and its vocabulary is unknown.** DHA validates it even when the
+field is omitted (`patientInstruction: "" is not a valid choice`), so no prescription can be filed without a
+member of a list nobody has published. Thirty-two candidates were rejected on UAT:
+
+> *plain English* — after food · before food · with food · after meals · with meals · before meals · at bedtime ·
+> take with water · swallow · chew · as directed · none · by mouth
+> *the published `PRESCRIPTION-CONDITION-KENYA` members, every rendering* — PRESCRIPTION-AFTER-MEALS ·
+> Prescription After Meals · prescription after meals · after-meals · AFTER-MEALS · AFTER MEALS · After Meals ·
+> morning · MORNING · Morning · night
+> *enum styles* — AFTER_FOOD · BEFORE_FOOD · WITH_FOOD
+> *administrative routes (`HPT/Routes`, by name, case and code)* — oral · orally · Oral · ORAL · RT10025 · Inhalation
+> *Django-style integer choices* — 0 · 1 · 2 · 3
+
+The routes are worth ruling out explicitly: they are the obvious candidate, DHA publishes 40 of them, and each
+product record carries a `route_code`. `patientInstruction` is not them.
+
+**Every published source has been mined and none carries the list** (2026-09-24):
+
+| Source | Result |
+|---|---|
+| Portal docs (`eclaims/eprescriptions`) | no enumeration for this field |
+| `docs/api/spec/eclaims.json` | no enumeration |
+| Live portal page HTML | enumerations for **14** other fields (`serviceType`, `regulationBody`, `dischargeReason`, `claimCancelReason`, `modeOfArrival`, `broughtBy`, `identificationType`…) — none for `patientInstruction` |
+| `MOH-KENYA/HIE-REF` → `PRESCRIPTION-CONDITION-KENYA` | reads like the right list; every member rejected in every rendering |
+
+The live portal response schema for a prescription item also carries `route` and `routeCode`, which the request
+schema does not document and the SDK does not send — worth asking about at the same time, in case
+`patientInstruction` is conditional on them.
+
+`generic_concept_code` was never the subject of an error, so its format is at least tolerated — whether a value
+resolves to a real medicine is still unknown. **ePrescriptions stay blocked on this one field** (§10).
 
 ## 7. Files
 

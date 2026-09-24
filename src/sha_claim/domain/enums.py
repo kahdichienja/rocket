@@ -123,6 +123,10 @@ class PaymentMechanism(LenientStrEnum):
     CAPITATION = "CAPITATION"
     CASE_BASED = "CASE BASED"
     FEE_FOR_SERVICE = "FEE FOR SERVICE"
+    #: A fixed amount for every day of the stay — SHA's bed rebate. Live on ICU, HDU, NICU and the
+    #: burns unit (`SHA-03-*`). Undocumented: the spec never names the mechanism, and the fields that
+    #: carry the accrual (`accruedPerDiemDays`, `accruedPerDiemAmount`) have empty descriptions.
+    PER_DIEM = "PER DIEM"
 
 
 class CoverageStatus(LenientStrEnum):

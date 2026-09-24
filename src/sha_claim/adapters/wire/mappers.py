@@ -188,6 +188,9 @@ def to_claim_intervention(w: ClaimInterventionWire) -> ClaimIntervention:
         required_preauth_document_types=tuple(w.required_preauth_document_types),
         bill_from=parse_datetime(w.bill_from),
         bill_to=parse_datetime(w.bill_to),
+        accrued_per_diem_days=w.accrued_per_diem_days or 0,
+        accrued_per_diem=_money(w.accrued_per_diem_amount),
+        keph_level_tariff=_money(w.keph_level_tarrif),
         extra=w.unmodelled(),
     )
 
@@ -219,6 +222,10 @@ def to_claim_line(w: ClaimLineWire) -> ClaimLine:
         charge_date=parse_date(w.charge_date),
         is_active=w.is_active,
         doctor_name=w.doctor_name,
+        rebate_amount=_money(w.nhif_rebate_amount),
+        sponsor_net=_money(w.sponsor_net_price),
+        patient_net=_money(w.patient_net_price),
+        benefit_exceeded=w.uhc_exceeded,
         extra=w.unmodelled(),
     )
 

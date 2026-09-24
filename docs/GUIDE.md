@@ -39,8 +39,9 @@ Four ideas explain almost everything:
 | **Interventions are the unit of everything.** | An intervention code (e.g. `SHA-12-001` Consultation) is what you authorise, bill against, attach documents to, and pre-authorise. |
 
 Two environments exist: **UAT** (`https://ilm-dev.dha.go.ke/uat-middleware`, test data) and
-**production** (URL supplied by DHA at onboarding). Your credentials decide which facility you are:
-the facility code is embedded in the access token, so you never pass it.
+**production** (URL supplied by DHA at onboarding). Your credentials usually decide which facility you are —
+the facility code is embedded in the access token. A credential that covers several facilities sends the code per
+request instead; see *Facility scoping* in §3.
 
 ---
 
@@ -482,6 +483,35 @@ Methods that return a `VirtualClaim` also refresh `session.claim`.
 | `restore_intervention(code)` | `POST /claims/interventions/restore` | `None` |
 | `switch_intervention(existing, new, *, retain_bill_items=True, bill_from=None, bill_to=None)` | `POST /claims/interventions/switch` | `None` |
 
+**The bed rebate (`PER DIEM`).** Critical care is not billed by the item. ICU, HDU, NICU and the burns unit
+(`SHA-03-*`) come back with `payment_mechanism == PaymentMechanism.PER_DIEM`: SHA pays a fixed amount for every
+day of the stay and accrues it itself. None of this is in the portal spec — the fields exist with empty
+descriptions — so read it off the intervention:
+
+| Field / property | Type | What it is |
+|---|---|---|
+| `is_per_diem` *(prop)* | `bool` | this intervention is paid by the day, not the item |
+| `accrued_per_diem_days` | `int` | days of stay SHA has accrued so far |
+| `accrued_per_diem` | `Money \| None` | what those days have earned, as SHA computed it |
+| `keph_level_tariff` | `Money \| None` | the daily rate **for your facility's KEPH level** (SHA spells it `kephLevelTarrif`) |
+| `bill_from` / `bill_to` | `datetime \| None` | the window being accrued over |
+| `per_diem_allowance` *(prop)* | `Money \| None` | **what SHA will pay for the stay so far** |
+
+`per_diem_allowance` prefers SHA's own accrual, falls back to `keph_level_tariff × accrued_per_diem_days`, and
+returns **`None` — never zero —** when it knows neither. That matters: on UAT every per-diem intervention returns
+`overall_tariff` `0.00` because no rate is published for the facility's KEPH level, and a zero here would read as
+"SHA pays nothing" and push a covered stay onto the patient. Treat `None` as *unknown*, and say so on screen.
+
+```python
+bed = next((i for i in claim.interventions if i.is_per_diem), None)
+if bed:
+    allowance = bed.per_diem_allowance          # Money | None
+    if allowance is None:
+        ui.warn(f"{bed.name}: {bed.accrued_per_diem_days} day(s) accrued, rate not published — confirm with SHA")
+    else:
+        extras = claim.total_amount - allowance  # anything over the per diem is the patient's / an exclusion
+```
+
 ### 9.2 Diagnoses
 
 | Method | Sends | Returns |
@@ -517,6 +547,18 @@ attachment named `attachment_0`, `attachment_1`, … (upload timeout applies whe
 Returns **`ClaimLine`**: `guid` (needed to remove/edit), `intervention_code`, `item_code`, `item_name`,
 `quantity` (Decimal), `unit_price`, `total_amount`, `net_amount`, `copay`, `scheme_code`,
 `charge_date`, `is_active`, `doctor_name`.
+
+Plus, on lines read back from `preview()`, **how SHA splits the line** — computed by SHA, never sent by you:
+
+| Field | Type | What it is |
+|---|---|---|
+| `rebate_amount` | `Money \| None` | what SHA rebates on this line (the wire still calls it `nhifRebateAmount`) |
+| `sponsor_net` | `Money \| None` | the sponsor's share |
+| `patient_net` | `Money \| None` | what is left to the patient |
+| `benefit_exceeded` | `bool` | SHA flagged this line as taking the member past a UHC limit |
+
+All four are `None`/`False` on the line `add_line` returns and populated once SHA has priced the claim, so read
+them from `preview()`, not from the add call.
 
 `RequestValidationError` if quantity ≤ 0 or price negative.
 
@@ -679,11 +721,23 @@ Returns **`Prescription`**: `guid`, `code`, `status`, `doctor_review_status`, `i
 | Method | Sends | Returns |
 |---|---|---|
 | `prescription()` | `GET /prescriptions?consent_token=…` | `Prescription \| None` |
-| `dispense(intervention, products, dispensers)` | `POST /prescriptions/dispenses` `{consent_token, intervention_code, actual_products: [{actual_product_code, total_quantity, medication_price}], doctors: [{identification_number, identification_type}]}` | `Dispense` — `record_id`, `status`, `dosages` |
+| `dispense(intervention, products, dispensers)` | `POST /prescriptions/dispense` (singular — the portal documents `/dispenses`, which 404s) `{consent_token, intervention_code, actual_products: [{actual_product_code, total_quantity, medication_price}], doctors: [{identification_number, identification_type}]}` | `Dispense` — `record_id`, `status`, `dosages` |
 | `remove_prescription_doctor(intervention, registration_number)` | `DELETE /prescriptions/doctors` | `None` |
 
 `products` is a list of `DispensedProduct(product_code, quantity, price: Money)`; `dispensers` a list
 of `PractitionerRef`. Both must be non-empty.
+
+> ⚠ **`prescribe()` cannot succeed on UAT today.** `patient_instruction` is validated against an enumeration
+> DHA has never published: 36 candidates have been rejected, including every member of its own
+> `PRESCRIPTION-CONDITION-KENYA` value set, all 40 administrative routes, free text and integer choices. The
+> live portal page carries enums for 14 other fields and none for this one. `dose_unit` was solved the same way
+> and accepts 12 lowercase values (`tablet`, `ml`, …) that appear in no published registry. `GET /prescriptions`
+> answers 403 for this client. `dispense()` works — but only once a prescription exists. The full elimination
+> table is in `docs/api/WORKFLOWS.md` §6.1; **it is DHA's to answer, don't re-guess it.**
+>
+> One related trap: `generic_concept_code` is **not validated** — UAT accepts a `PH…` product code where a
+> `GE…` generic belongs. A wrong code fails silently rather than loudly, so resolve the generic yourself
+> (DHA's terminology service links them by a `has-generic` mapping).
 
 ### 9.9 Emergency (on a session opened via `sha.emergency.open_case`)
 
@@ -812,10 +866,28 @@ await session.add_next_of_kin(
 )
 await session.send_discharge_otp(patient)
 await session.discharge(
-    discharge_date=date.today(), reason=DischargeReason.RECOVERED, invoice_number="INV-1", otp=read_otp()
+    reason=DischargeReason.RECOVERED, invoice_number="INV-1", otp=read_otp()  # discharged_at defaults to now
 )
 await session.submit("INV-1")
 ```
+
+### 12.2a Critical care, where SHA pays by the day
+
+```python
+session = await sha.claims.open_visit(patient, ServiceType.INPATIENT, ["SHA-03-001"], otp)  # ICU CARE
+await session.add_diagnosis("JB0Z", "SHA-03-001")
+await session.add_line("SHA-03-001", Money.kes("25000"))   # your own bed charge, as usual
+
+claim = await session.preview()
+bed = next(i for i in claim.interventions if i.is_per_diem)
+allowance = bed.per_diem_allowance      # Money | None — what SHA covers for the stay so far
+
+# anything the bill carries above the allowance is the patient's, or an exclusion on your invoice
+if allowance is not None and claim.total_amount and claim.total_amount > allowance:
+    excess = claim.total_amount - allowance
+```
+
+`allowance is None` means SHA published neither an accrual nor a KEPH-level rate — unknown, not nothing. §9.1.
 
 ### 12.3 Something that needs pre-authorisation
 
@@ -919,8 +991,15 @@ Realistic payloads for every endpoint are in `docs/api/spec/examples.json` (the 
    care.
 9. **Every result has `.extra`** with unmodelled server fields. Read-only.
 10. **Reads retry, writes don't.** If you wrap a write in your own retry, you own the duplicate.
-11. **The facility is in your credentials.** There's no facility parameter anywhere.
-12. **Pre-auth nested arrays are unverified on UAT** (Q3). Everything else in this guide is either
+11. **The facility comes from your credentials, or from the scope you set.** No method takes a facility
+    argument: either the token carries it, or you wrap the call in `facility_scope(...)` / set
+    `SHA_FACILITY_ID`. The two headers always travel together, never one alone.
+12. **`per_diem_allowance` is `None`, not zero, when SHA hasn't published a rate.** Don't coerce it — a
+    zero on an ICU stay bills the patient for the bed. §9.1.
+13. **ePrescriptions are blocked on UAT by `patient_instruction`.** 36 candidate values rejected, including
+    every member of DHA's own published value set; no enumeration exists in any published source. `dispense`
+    works once a prescription exists. `WORKFLOWS.md` §6.1 has the elimination table — don't re-guess it.
+14. **Pre-auth nested arrays are unverified on UAT** (Q3). Everything else in this guide is either
     live-verified or asserted against the portal's published examples.
 
 ---
@@ -1148,7 +1227,7 @@ Properties: `preauth_outstanding`, `lines`
 
 #### `ClaimIntervention`
 
-ClaimIntervention(code: 'InterventionCode', name: 'str', payment_mechanism: 'PaymentMechanism | None', needs_preauth: 'bool', preauth_exists: 'bool', workflow_state: 'str', sub_benefit_code: 'str' = '', fund: 'str' = '', overall_tariff: 'Money | None' = None, applicable_document_types: 'tuple[str, ...]' = (), required_preauth_document_types: 'tuple[str, ...]' = (), bill_from: 'datetime | None' = None, bill_to: 'datetime | None' = None, extra: 'Mapping[str, Any]' = <factory>)
+ClaimIntervention(code: 'InterventionCode', name: 'str', payment_mechanism: 'PaymentMechanism | None', needs_preauth: 'bool', preauth_exists: 'bool', workflow_state: 'str', sub_benefit_code: 'str' = '', fund: 'str' = '', overall_tariff: 'Money | None' = None, applicable_document_types: 'tuple[str, ...]' = (), required_preauth_document_types: 'tuple[str, ...]' = (), bill_from: 'datetime | None' = None, bill_to: 'datetime | None' = None, accrued_per_diem_days: 'int' = 0, accrued_per_diem: 'Money | None' = None, keph_level_tariff: 'Money | None' = None, extra: 'Mapping[str, Any]' = <factory>)
 
 | Field | Type | Required |
 |---|---|---|
@@ -1165,9 +1244,12 @@ ClaimIntervention(code: 'InterventionCode', name: 'str', payment_mechanism: 'Pay
 | `required_preauth_document_types` | `tuple[str, ...]` | no |
 | `bill_from` | `datetime | None` | no |
 | `bill_to` | `datetime | None` | no |
+| `accrued_per_diem_days` | `int` | no |
+| `accrued_per_diem` | `Money | None` | no |
+| `keph_level_tariff` | `Money | None` | no |
 | `extra` | `dict` | no |
 
-Properties: `preauth_outstanding`
+Properties: `preauth_outstanding`, `is_per_diem`, `per_diem_allowance`
 
 #### `ClaimDiagnosis`
 
@@ -1185,7 +1267,7 @@ ClaimDiagnosis(code: 'Icd11Code | None', name: 'str', intervention_code: 'Interv
 
 #### `ClaimLine`
 
-ClaimLine(guid: 'LineGuid | None', intervention_code: 'InterventionCode | None', item_code: 'str', item_name: 'str', quantity: 'Decimal', unit_price: 'Money | None', total_amount: 'Money | None', net_amount: 'Money | None', copay: 'Money | None' = None, scheme_code: 'str' = '', charge_date: 'date | None' = None, is_active: 'bool' = True, doctor_name: 'str' = '', extra: 'Mapping[str, Any]' = <factory>)
+ClaimLine(guid: 'LineGuid | None', intervention_code: 'InterventionCode | None', item_code: 'str', item_name: 'str', quantity: 'Decimal', unit_price: 'Money | None', total_amount: 'Money | None', net_amount: 'Money | None', copay: 'Money | None' = None, scheme_code: 'str' = '', charge_date: 'date | None' = None, is_active: 'bool' = True, doctor_name: 'str' = '', rebate_amount: 'Money | None' = None, sponsor_net: 'Money | None' = None, patient_net: 'Money | None' = None, benefit_exceeded: 'bool' = False, extra: 'Mapping[str, Any]' = <factory>)
 
 | Field | Type | Required |
 |---|---|---|
@@ -1202,6 +1284,10 @@ ClaimLine(guid: 'LineGuid | None', intervention_code: 'InterventionCode | None',
 | `charge_date` | `date | None` | no |
 | `is_active` | `bool` | no |
 | `doctor_name` | `str` | no |
+| `rebate_amount` | `Money | None` | no |
+| `sponsor_net` | `Money | None` | no |
+| `patient_net` | `Money | None` | no |
+| `benefit_exceeded` | `bool` | no |
 | `extra` | `dict` | no |
 
 #### `Invoice`
@@ -1622,7 +1708,7 @@ Identifies a doctor by registration number (preferred) or a national identity do
 - **`IdentificationType`** (strict): `NATIONAL_ID` = `National ID`, `ALIEN_ID` = `Alien ID`, `REFUGEE_ID` = `Refugee ID`, `REGISTRATION_NUMBER` = `registration_number`
 - **`ModeOfArrival`** (strict): `AMBULANCE` = `AMBULANCE`, `WALK_IN` = `WALK-IN`, `OTHER` = `OTHER`
 - **`NextOfKinIdType`** (strict): `NATIONAL_ID` = `National ID`, `CLIENT_REGISTRY_ID` = `ClientRegistry ID`, `BIRTH_NOTIFICATION` = `Birth Notification`, `BIRTH_CERTIFICATE` = `Birth Certificate`, `ALIEN_ID` = `Alien ID`, `REFUGEE_ID` = `Refugee ID`, `MANDATE_NUMBER` = `Mandate Number`, `TEMPORARY_ID` = `Temporary ID`
-- **`PaymentMechanism`** (lenient — unknown values allowed): `CAPITATION` = `CAPITATION`, `CASE_BASED` = `CASE BASED`, `FEE_FOR_SERVICE` = `FEE FOR SERVICE`
+- **`PaymentMechanism`** (lenient — unknown values allowed): `CAPITATION` = `CAPITATION`, `CASE_BASED` = `CASE BASED`, `FEE_FOR_SERVICE` = `FEE FOR SERVICE`, `PER_DIEM` = `PER DIEM`
 - **`ServiceType`** (strict): `CAPITATION` = `CAPITATION`, `OUTPATIENT` = `OUTPATIENT`, `INPATIENT` = `INPATIENT`, `EMERGENCY` = `EMERGENCY`
 - **`DocumentType`** (strict): `BIO_DETAILS` = `BIO_DETAILS`, `BIRTH_NOTIFICATION` = `BIRTH_NOTIFICATION`, `CARE_PLAN` = `CARE_PLAN`, `CASE_NOTE` = `CASE_NOTE`, `CASE_SUMMARY` = `CASE_SUMMARY`, `CERTIFIED_BURIAL_PERMIT` = `CERTIFIED_BURIAL_PERMIT`, `CERTIFIED_COPY_OF_DECEASED_ID` = `CERTIFIED_COPY_OF_DECEASED_ID`, `CLAIM_FORM` = `CLAIM_FORM`, `COVER_LETTER_FROM_EMPLOYER` = `COVER_LETTER_FROM_EMPLOYER`, `CRITICAL_CARE_UNIT_CASE` = `CRITICAL_CARE_UNIT_CASE`, `CT_SCAN` = `CT_SCAN`, `DEATH_NOTICE` = `DEATH_NOTICE`, `DIALYSIS_CHART` = `DIALYSIS_CHART`, `DISCHARGE_SUMMARY` = `DISCHARGE_SUMMARY`, `ENTRY_EXIT_VISA_STAMP` = `ENTRY_EXIT_VISA_STAMP`, `FINAL_BILL` = `FINAL_BILL`, `IMAGING_ORDER` = `IMAGING_ORDER`, `IMAGING_REPORT` = `IMAGING_REPORT`, `INVOICE` = `INVOICE`, `LAB_ORDER` = `LAB_ORDER`, `LAB_RESULTS` = `LAB_RESULTS`, `MAGNETIC_RESONANCE_IMAGING` = `MAGNETIC_RESONANCE_IMAGING`, `MEDICAL_REPORT` = `MEDICAL_REPORT`, `OTHER` = `OTHER`, `POST_SERVICE_IMAGING_REPORT` = `POST_SERVICE_IMAGING_REPORT`, `PRE_SERVICE_IMAGING_REPORT` = `PRE_SERVICE_IMAGING_REPORT`, `PREAUTH_FORM` = `PREAUTH_FORM`, `PRESCRIPTION` = `PRESCRIPTION`, `REQUEST_FORM_BY_RELEVANT_CONSULTANT` = `REQUEST_FORM_BY_RELEVANT_CONSULTANT`, `RHESUS_FACTOR` = `RHESUS_FACTOR`, `THEATRE_NOTES` = `THEATRE_NOTES`
 - **`RegulationBody`** (strict): `KMPDC` = `KMPDC`, `COC` = `COC`, `NCK` = `NCK`

@@ -71,6 +71,7 @@ from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
 from sha_claim.domain.prescription import Dispense, DispensedProduct, Dosage, MedicationOrder, Prescription
 from sha_claim.domain.registry import OtherIdentification, PatientContact, PatientRecord
+from sha_claim.domain.schemes import belongs_to_scheme, canonical_scheme, scheme_family
 from sha_claim.errors import (
     AuthenticationError,
     BadRequestError,
@@ -96,7 +97,7 @@ from sha_claim.facility import (
 from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
-__version__ = "0.1.14"
+__version__ = "0.1.15"
 
 __all__ = [
     "AsyncSHAClient",
@@ -202,7 +203,10 @@ __all__ = [
     "VirtualClaim",
     "__version__",
     "activate_facility",
+    "belongs_to_scheme",
+    "canonical_scheme",
     "clear_facility",
     "current_facility",
     "facility_scope",
+    "scheme_family",
 ]

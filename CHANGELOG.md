@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.15] — 2026-09-24
+
+### Added
+- `canonical_scheme()`, `scheme_family()`, `belongs_to_scheme()` — DHA spells a scheme two ways (`POMSF` in
+  eligibility, `Public Officers Medical Scheme Fund` on the claim) and decides a visit's scheme itself. These
+  fold both spellings and express the one split a caller can decide: `PMF-*` codes are POMSF, `SHA-*` codes are
+  any general scheme (DHA picks UHC or SHIF).
+
 ## [0.1.14] — 2026-09-24
 
 ### Fixed

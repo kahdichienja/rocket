@@ -36,7 +36,7 @@ covering several facilities scopes each call instead:
 ```python
 from sha_claim import facility_scope
 
-with facility_scope("FID-47-115307-8"):      # safe under concurrency (ContextVar)
+with facility_scope("FID-47-115307-8"):  # safe under concurrency (ContextVar)
     await sha.eligibility.check(...)
 ```
 
@@ -122,7 +122,7 @@ async with AsyncSHAClient.from_env() as sha:
     # 4. check what the server thinks before you commit
     preview = await session.preview()
     if blockers := preview.submission_blockers():
-        return [str(b) for b in blockers]   # NO_DIAGNOSIS, PREAUTH_OUTSTANDING, ZERO_TOTAL, …
+        return [str(b) for b in blockers]  # NO_DIAGNOSIS, PREAUTH_OUTSTANDING, ZERO_TOTAL, …
 
     # 5. submit exactly once (UAT requires a discharge reason and OTP even for outpatient)
     await session.send_discharge_otp(patient)
@@ -144,7 +144,7 @@ itself. Undocumented in the portal spec, modelled here:
 
 ```python
 bed = next(i for i in claim.interventions if i.is_per_diem)
-allowance = bed.per_diem_allowance     # SHA's accrual, else KEPH-level rate × days, else None
+allowance = bed.per_diem_allowance  # SHA's accrual, else KEPH-level rate × days, else None
 ```
 
 `None` means SHA published neither — **unknown, not zero.** Don't coerce it: a zero on an ICU stay reads as

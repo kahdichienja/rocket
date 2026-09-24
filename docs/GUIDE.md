@@ -505,9 +505,11 @@ returns **`None` — never zero —** when it knows neither. That matters: on UA
 ```python
 bed = next((i for i in claim.interventions if i.is_per_diem), None)
 if bed:
-    allowance = bed.per_diem_allowance          # Money | None
+    allowance = bed.per_diem_allowance  # Money | None
     if allowance is None:
-        ui.warn(f"{bed.name}: {bed.accrued_per_diem_days} day(s) accrued, rate not published — confirm with SHA")
+        ui.warn(
+            f"{bed.name}: {bed.accrued_per_diem_days} day(s) accrued, rate not published — confirm with SHA"
+        )
     else:
         extras = claim.total_amount - allowance  # anything over the per diem is the patient's / an exclusion
 ```
@@ -866,7 +868,9 @@ await session.add_next_of_kin(
 )
 await session.send_discharge_otp(patient)
 await session.discharge(
-    reason=DischargeReason.RECOVERED, invoice_number="INV-1", otp=read_otp()  # discharged_at defaults to now
+    reason=DischargeReason.RECOVERED,
+    invoice_number="INV-1",
+    otp=read_otp(),  # discharged_at defaults to now
 )
 await session.submit("INV-1")
 ```
@@ -876,11 +880,11 @@ await session.submit("INV-1")
 ```python
 session = await sha.claims.open_visit(patient, ServiceType.INPATIENT, ["SHA-03-001"], otp)  # ICU CARE
 await session.add_diagnosis("JB0Z", "SHA-03-001")
-await session.add_line("SHA-03-001", Money.kes("25000"))   # your own bed charge, as usual
+await session.add_line("SHA-03-001", Money.kes("25000"))  # your own bed charge, as usual
 
 claim = await session.preview()
 bed = next(i for i in claim.interventions if i.is_per_diem)
-allowance = bed.per_diem_allowance      # Money | None — what SHA covers for the stay so far
+allowance = bed.per_diem_allowance  # Money | None — what SHA covers for the stay so far
 
 # anything the bill carries above the allowance is the patient's, or an exclusion on your invoice
 if allowance is not None and claim.total_amount and claim.total_amount > allowance:

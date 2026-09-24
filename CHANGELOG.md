@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.17] — 2026-09-24
+
+### Added
+- Per-diem accrual fields on claim interventions: `is_per_diem`, `accrued_per_diem_days`, `accrued_per_diem_amount`, and `per_diem_allowance`.
+- Payment mechanism and scheme mappings for inpatient per-diem stays.
+
 ## [0.1.16] — 2026-09-24
 
 ### Fixed

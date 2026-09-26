@@ -42,6 +42,81 @@ ConsentProof = Otp | BiometricGuid | MatchId
 
 
 @dataclass(frozen=True, slots=True)
+class BiometricContext:
+    """Who and what is performing a biometric capture, as `POST /claims/authorize` wants it.
+
+    These identify the *workstation and operator*, not the patient: SHA ties a capture to a registered
+    device and a registered agent, and rejects one it cannot place. They come from the HealthID hardware
+    server where it is deployed, and from configuration where it is not — this type does not care which,
+    so adopting the hardware later changes nothing below the call site.
+
+    `factors` selects the method: `SHA` is eKYC through the SHA portal (adults), `fingerprint` the
+    under-18 flow. Defaults to eKYC because that is the path this SDK supports end to end.
+    """
+
+    agent_id: str
+    """National ID of the biometrics agent registered on the hardware server."""
+    work_station_id: str
+    ekyc_provider_id: str = ""
+    """The facility *name* SHA has registered, not its FR code — `provider` carries that."""
+    provider: str = ""
+    """Facility FR code. Usually left empty so the facility scope in force supplies it."""
+    authorizing_device_os: str = "windows"
+    factors: tuple[str, ...] = ("SHA",)
+    is_integration: bool = True
+    """True when the request comes from an integrated HMS rather than the portal — always true here."""
+    is_emergency: bool = False
+    is_biometrics_discharge_authorization: bool = False
+    """Only when authorizing an inpatient discharge; false for every other flow."""
+
+    def __post_init__(self) -> None:
+        if not self.agent_id.strip():
+            raise ValueError("biometric capture needs the agent's national ID")
+        if not self.work_station_id.strip():
+            raise ValueError("biometric capture needs a work station id")
+
+    def as_payload(self) -> dict[str, Any]:
+        """The biometric half of the authorize body. Empty optional fields are omitted, not sent blank."""
+        body: dict[str, Any] = {
+            "agent_id": self.agent_id.strip(),
+            "work_station_id": self.work_station_id.strip(),
+            "authorizing_device_os": self.authorizing_device_os,
+            "factors": list(self.factors),
+            "is_integration": self.is_integration,
+            "is_emergency": self.is_emergency,
+            "is_biometrics_discharge_authorization": self.is_biometrics_discharge_authorization,
+        }
+        if self.ekyc_provider_id.strip():
+            body["ekyc_provider_id"] = self.ekyc_provider_id.strip()
+        if self.provider.strip():
+            body["provider"] = self.provider.strip()
+        return body
+
+
+@dataclass(frozen=True, slots=True)
+class VerificationRequest:
+    """The eKYC capture handoff on a biometric authorization (`shaVerificationRequest`).
+
+    `POST /claims/authorize` with biometric factors does not verify anybody by itself: it files a PENDING
+    authorization and hands back a one-time URL where the beneficiary proves who they are. Without
+    `request_url` there is nothing for the integrator to open, and the authorization sits PENDING for ever.
+
+    `embed_expiry` is seconds, and short — 120 on UAT. When it lapses the authorization stays PENDING and
+    **blocks a new one for the same context**, so the caller must `reject` it before trying again.
+    """
+
+    request_url: str = ""
+    embed_expiry: int | None = None
+    embeded_token: str = ""
+    """SHA's spelling, kept verbatim so the wire and the model read the same."""
+    request_id: str = ""
+
+    @property
+    def is_usable(self) -> bool:
+        return bool(self.request_url)
+
+
+@dataclass(frozen=True, slots=True)
 class AuthorizedIntervention:
     code: InterventionCode
     name: str
@@ -68,6 +143,10 @@ class Authorization:
     expiry: datetime | None = None
     overall_preauth_finalised: bool = False
     record_id: int | None = None
+    ekyc_token: str = ""
+    """Present on the biometric path; the same value as `verification.embeded_token`."""
+    verification: VerificationRequest | None = None
+    """Where the beneficiary proves who they are. Only the biometric path has one."""
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @property
@@ -84,6 +163,20 @@ class Authorization:
     @property
     def is_pending(self) -> bool:
         return self.status == AuthorizationStatus.PENDING
+
+    @property
+    def is_verified(self) -> bool:
+        """Consent is proven and the visit can be opened.
+
+        `AUTHORIZED_PENDING_VISIT` counts: SHA has matched the beneficiary and is waiting for us to open the
+        visit. Treating it as unfinished leaves a verified patient standing at the desk.
+        """
+        return self.status in (AuthorizationStatus.AUTHORIZED, AuthorizationStatus.AUTHORIZED_PENDING_VISIT)
+
+    @property
+    def capture_url(self) -> str:
+        """The eKYC page to send the beneficiary to, or empty on the OTP path."""
+        return self.verification.request_url if self.verification else ""
 
     @property
     def needs_preauth(self) -> bool:

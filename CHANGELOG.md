@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.19] — 2026-09-26
+
+### Added
+- **Biometric consent & eKYC integration (`POST /claims/authorize`):**
+  - Added `BiometricContext` and `VerificationRequest` domain models (`request_url`, `embed_expiry`, `embeded_token`, `request_id`).
+  - Added `consent.authorize_biometric(...)` on `AsyncSHAClient` supporting `agent_id`, `work_station_id`, `authorizing_device_os`, `ekyc_provider_id`, `provider`, and `factors: ["SHA"]`.
+  - Added `Eligibility.consent_route()` method returning `ConsentRoute` (`OTP` | `BIOMETRIC`) based on payer flags (`facility_biometrics_enforced` and `whitelisted_for_otp`).
+  - Wire authorization request mapping supporting optional biometric capture fields while preserving exact backwards compatibility with OTP authorizations.
+
 ## [0.1.18] — 2026-09-25
 
 Documentation only — no code changes, so nothing to upgrade for.

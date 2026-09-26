@@ -62,7 +62,7 @@ from sha_claim.domain.claim import (
     VirtualClaim,
 )
 from sha_claim.domain.codes import Icd11Code, InterventionCode
-from sha_claim.domain.consent import Authorization, ConsentProof, Otp
+from sha_claim.domain.consent import Authorization, BiometricContext, ConsentProof, Otp
 from sha_claim.domain.eligibility import Eligibility
 from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol, EmtClaim, ProtocolLine
 from sha_claim.domain.enums import CancelReason, IdentificationType, ServiceType
@@ -186,8 +186,11 @@ class HttpConsentGateway:
         service_type: ServiceType,
         interventions: Sequence[InterventionCode],
         otp: Otp | None,
+        biometrics: BiometricContext | None = None,
     ) -> Authorization:
-        response = await self._transport.send(requests.authorize(patient, service_type, interventions, otp))
+        response = await self._transport.send(
+            requests.authorize(patient, service_type, interventions, otp, biometrics)
+        )
         return mappers.to_authorization(parse_as(AuthorizationWire, response))
 
     async def send_otp(self, patient: PatientId, interventions: Sequence[InterventionCode]) -> str:

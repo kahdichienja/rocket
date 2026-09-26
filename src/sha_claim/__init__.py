@@ -37,8 +37,16 @@ from sha_claim.domain.codes import (
     RegulationBody,
     SchemeCode,
 )
-from sha_claim.domain.consent import Authorization, AuthorizedIntervention, BiometricGuid, MatchId, Otp
-from sha_claim.domain.eligibility import Coverage, Eligibility, Scheme
+from sha_claim.domain.consent import (
+    Authorization,
+    AuthorizedIntervention,
+    BiometricContext,
+    BiometricGuid,
+    MatchId,
+    Otp,
+    VerificationRequest,
+)
+from sha_claim.domain.eligibility import ConsentRoute, Coverage, Eligibility, Scheme
 from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol, EmtClaim, ProtocolLine
 from sha_claim.domain.enums import (
     AuthorizationStatus,
@@ -111,6 +119,7 @@ __all__ = [
     "BearerToken",
     "BedOccupancy",
     "BenefitPackage",
+    "BiometricContext",
     "BiometricGuid",
     "Blocker",
     "BroughtBy",
@@ -158,6 +167,7 @@ __all__ = [
     "LineEdit",
     "LineGuid",
     "LineResubmission",
+    "ConsentRoute",
     "MatchId",
     "MedicationOrder",
     "ModeOfArrival",
@@ -169,6 +179,7 @@ __all__ = [
     "NotFoundError",
     "OtherIdentification",
     "Otp",
+    "VerificationRequest",
     "PatientContact",
     "PatientId",
     "PatientRecord",

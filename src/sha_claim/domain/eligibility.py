@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
+from enum import StrEnum
 from typing import Any
 
 from sha_claim.domain.enums import CoverageStatus, EligibilityStatus
@@ -44,6 +45,13 @@ class Scheme:
         return self.coverage.is_active_on(day) and self.policy_period.contains(day)
 
 
+class ConsentRoute(StrEnum):
+    """How this member proves consent for a visit."""
+
+    OTP = "OTP"
+    BIOMETRIC = "BIOMETRIC"
+
+
 @dataclass(frozen=True, slots=True)
 class Eligibility:
     patient_id: PatientId | None
@@ -70,6 +78,23 @@ class Eligibility:
     def can_consent_by_otp(self) -> bool:
         """Whether `send_otp` can work at all: SHA must hold a phone contact for this member."""
         return self.whitelisted_for_otp
+
+    def consent_route(self) -> ConsentRoute:
+        """Which way this member proves consent — the payer's decision, not ours.
+
+        Both flags come back on the eligibility check and between them they settle it:
+
+        * `facility_biometrics_enforced` — SHA has put this facility on biometrics. It decides first,
+          because an enforced facility may not fall back to an OTP even for a member who has a phone.
+        * `whitelisted_for_otp` — SHA holds a confirmed phone contact. False means `send_otp` will fail
+          whatever else is true, so the biometric path is the only one left.
+
+        A member who can do neither is not represented here: biometrics is what remains, and if it fails the
+        desk files an OTP whitelist request. That is the documented remedy, not a dead end.
+        """
+        if self.facility_biometrics_enforced:
+            return ConsentRoute.BIOMETRIC
+        return ConsentRoute.OTP if self.whitelisted_for_otp else ConsentRoute.BIOMETRIC
 
     def contracted_schemes_on(self, day: date) -> tuple[Scheme, ...]:
         """Active schemes the acting facility may actually bill — the intersection SHA enforces at `open_visit`."""

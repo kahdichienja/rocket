@@ -30,7 +30,7 @@ from sha_claim.domain.benefits import (
     UtilizationBalance,
 )
 from sha_claim.domain.codes import InterventionCode
-from sha_claim.domain.consent import Authorization, ConsentProof, Otp
+from sha_claim.domain.consent import Authorization, BiometricContext, ConsentProof, Otp
 from sha_claim.domain.eligibility import Eligibility
 from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol
 from sha_claim.domain.enums import BroughtBy, IdentificationType, ModeOfArrival, ServiceType
@@ -196,6 +196,25 @@ class ConsentResource:
         """
         codes = [InterventionCode.of(c) for c in interventions]
         return await self._capture.execute(PatientId.of(patient), service_type, codes, otp)
+
+    async def authorize_biometric(
+        self,
+        patient: PatientId | str,
+        service_type: ServiceType,
+        interventions: Sequence[InterventionCode | str],
+        biometrics: BiometricContext,
+    ) -> Authorization:
+        """`POST /claims/authorize` with eKYC factors — the path for a member SHA will not OTP.
+
+        Returns a PENDING authorization carrying `verification.request_url`: send the beneficiary there to
+        prove who they are, then poll `get()` until `is_verified`, and open the visit with `.proof`.
+
+        The capture URL is short-lived (`verification.embed_expiry`, 120s on UAT). If it lapses the
+        authorization stays PENDING **and blocks a new one for the same patient and interventions**, so call
+        `reject(authorization.token)` before trying again — otherwise the desk is wedged.
+        """
+        codes = [InterventionCode.of(c) for c in interventions]
+        return await self._capture.execute(PatientId.of(patient), service_type, codes, None, biometrics)
 
     async def send_otp(
         self, patient: PatientId | str, interventions: Sequence[InterventionCode | str]

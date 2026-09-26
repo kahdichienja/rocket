@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from sha_claim.domain.codes import InterventionCode
-from sha_claim.domain.consent import Authorization, Otp
+from sha_claim.domain.consent import Authorization, BiometricContext, Otp
 from sha_claim.domain.enums import ServiceType
 from sha_claim.domain.identifiers import PatientId
 from sha_claim.errors import RequestValidationError, Violation
@@ -31,5 +31,8 @@ class CaptureConsent:
         service_type: ServiceType,
         interventions: Sequence[InterventionCode],
         otp: Otp | None = None,
+        biometrics: BiometricContext | None = None,
     ) -> Authorization:
-        return await self._gateway.authorize(patient, service_type, require_interventions(interventions), otp)
+        return await self._gateway.authorize(
+            patient, service_type, require_interventions(interventions), otp, biometrics
+        )

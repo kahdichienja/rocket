@@ -11,7 +11,7 @@ from sha_claim.adapters.wire.transport import TimeoutKind, WireRequest
 from sha_claim.domain.attachments import Attachment
 from sha_claim.domain.claim import CoverageSelection, Discharge, LineEdit, NewClaimLine, NextOfKin, Submission
 from sha_claim.domain.codes import Icd11Code, InterventionCode
-from sha_claim.domain.consent import BiometricGuid, ConsentProof, MatchId, Otp
+from sha_claim.domain.consent import BiometricContext, BiometricGuid, ConsentProof, MatchId, Otp
 from sha_claim.domain.emergency import EmergencyCase, EmtClaim, ProtocolLine
 from sha_claim.domain.enums import CancelReason, IdentificationType, ServiceType
 from sha_claim.domain.identifiers import (
@@ -75,8 +75,18 @@ def interventions(patient: PatientId, sub_benefit_code: str) -> WireRequest:
 
 
 def authorize(
-    patient: PatientId, service_type: ServiceType, codes: Sequence[InterventionCode], otp: Otp | None
+    patient: PatientId,
+    service_type: ServiceType,
+    codes: Sequence[InterventionCode],
+    otp: Otp | None,
+    biometrics: BiometricContext | None = None,
 ) -> WireRequest:
+    """`POST /claims/authorize` — the one endpoint behind both consent paths.
+
+    With neither `otp` nor `biometrics` the body is the three fields it has always been, so the OTP path is
+    byte-for-byte unchanged. `biometrics` adds the fields the eKYC flow needs; SHA answers with a PENDING
+    authorization carrying a `shaVerificationRequest` to send the beneficiary to.
+    """
     body: dict[str, object] = {
         "patient_id": patient.value,
         "service_type": service_type.value,
@@ -84,6 +94,8 @@ def authorize(
     }
     if otp is not None:
         body["otp"] = otp.code
+    if biometrics is not None:
+        body.update(biometrics.as_payload())
     return WireRequest("POST", "/claims/authorize", json=body)
 
 

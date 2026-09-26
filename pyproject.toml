@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sha-claim"
-version = "0.1.18"
+version = "0.1.19"
 description = "Python SDK for Kenya SHA claims via the DHA AfyaConnect HIE eClaims API"
 readme = "README.md"
 license = "Apache-2.0"
@@ -48,10 +48,10 @@ Changelog = "https://github.com/kahdichienja/rocket/blob/main/CHANGELOG.md"
 Issues = "https://github.com/kahdichienja/rocket/issues"
 
 [tool.hatch.build.targets.sdist]
-include = ["src/sha_claim", "tests", "docs/api/spec", "README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml"]
+include = ["src/sha_claim", "src/smart_access", "tests", "docs/api/spec", "README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/sha_claim"]
+packages = ["src/sha_claim", "src/smart_access"]
 
 [tool.ruff]
 line-length = 110
@@ -83,7 +83,7 @@ markers = ["live: hits the DHA UAT environment (network, credentials); off by de
 addopts = "-m 'not live' --strict-markers"
 
 [tool.coverage.run]
-source = ["sha_claim"]
+source = ["sha_claim", "smart_access"]
 branch = true
 
 [tool.coverage.report]
@@ -92,7 +92,7 @@ show_missing = true
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "\\.\\.\\."]
 
 [tool.importlinter]
-root_package = "sha_claim"
+root_packages = ["sha_claim", "smart_access"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
@@ -112,3 +112,21 @@ name = "Adapters never touch the network library"
 type = "forbidden"
 source_modules = ["sha_claim.adapters"]
 forbidden_modules = ["sha_claim.infrastructure", "sha_claim.client", "httpx"]
+
+[[tool.importlinter.contracts]]
+name = "Smart Domain imports nothing from outer layers"
+type = "forbidden"
+source_modules = ["smart_access.domain"]
+forbidden_modules = ["smart_access.ports", "smart_access.use_cases", "smart_access.adapters", "smart_access.infrastructure", "smart_access.client", "smart_access.settings", "httpx", "pydantic"]
+
+[[tool.importlinter.contracts]]
+name = "Smart Use cases depend only on domain and ports"
+type = "forbidden"
+source_modules = ["smart_access.use_cases", "smart_access.ports"]
+forbidden_modules = ["smart_access.adapters", "smart_access.infrastructure", "smart_access.client", "httpx", "pydantic"]
+
+[[tool.importlinter.contracts]]
+name = "Smart Adapters never touch the network library"
+type = "forbidden"
+source_modules = ["smart_access.adapters"]
+forbidden_modules = ["smart_access.infrastructure", "smart_access.client", "httpx"]

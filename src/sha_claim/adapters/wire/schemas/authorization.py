@@ -14,6 +14,15 @@ class AuthorizedInterventionWire(WireModel):
     sub_benefit_code: str = ""
 
 
+class VerificationRequestWire(WireModel):
+    """`shaVerificationRequest` — the eKYC capture handoff on a biometric authorization."""
+
+    embed_expiry: int | None = None
+    embeded_token: str = ""  # SHA's spelling
+    request_id: str = ""
+    request_url: str = ""
+
+
 class AuthorizationWire(WireModel):
     id: int | None = None
     guid: str = ""
@@ -29,3 +38,5 @@ class AuthorizationWire(WireModel):
     expiry: str = ""
     overall_preauth_finalised: bool = False
     interventions: list[AuthorizedInterventionWire] = Field(default_factory=list)
+    ekyc_token: str = ""
+    sha_verification_request: VerificationRequestWire | None = None

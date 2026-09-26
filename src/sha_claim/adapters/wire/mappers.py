@@ -5,7 +5,11 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from sha_claim.adapters.wire.parsing import parse_date, parse_datetime
-from sha_claim.adapters.wire.schemas.authorization import AuthorizationWire, AuthorizedInterventionWire
+from sha_claim.adapters.wire.schemas.authorization import (
+    AuthorizationWire,
+    AuthorizedInterventionWire,
+    VerificationRequestWire,
+)
 from sha_claim.adapters.wire.schemas.benefits import (
     BedOccupancyWire,
     BenefitPackageWire,
@@ -51,7 +55,7 @@ from sha_claim.domain.claim import (
     VirtualClaim,
 )
 from sha_claim.domain.codes import Icd11Code, InterventionCode, ProtocolCode
-from sha_claim.domain.consent import Authorization, AuthorizedIntervention
+from sha_claim.domain.consent import Authorization, AuthorizedIntervention, VerificationRequest
 from sha_claim.domain.eligibility import Coverage, DateRange, Eligibility, Scheme
 from sha_claim.domain.emergency import EmergencyProtocol
 from sha_claim.domain.enums import (
@@ -138,7 +142,21 @@ def to_authorization(w: AuthorizationWire) -> Authorization:
         expiry=parse_datetime(w.expiry),
         overall_preauth_finalised=w.overall_preauth_finalised,
         record_id=w.id,
+        ekyc_token=w.ekyc_token,
+        verification=_to_verification_request(w.sha_verification_request),
         extra=w.unmodelled(),
+    )
+
+
+def _to_verification_request(w: VerificationRequestWire | None) -> VerificationRequest | None:
+    """None on the OTP path — only a biometric authorization carries a capture URL."""
+    if w is None:
+        return None
+    return VerificationRequest(
+        request_url=w.request_url,
+        embed_expiry=w.embed_expiry,
+        embeded_token=w.embeded_token,
+        request_id=w.request_id,
     )
 
 

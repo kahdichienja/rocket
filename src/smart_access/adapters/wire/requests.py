@@ -153,9 +153,7 @@ def build_preauth_request(request: PreauthRequest, provider_key: str) -> Request
     }
 
     if request.attachments:
-        body["attachments"] = [
-            {"attachment": a.attachment, "type": a.type} for a in request.attachments
-        ]
+        body["attachments"] = [{"attachment": a.attachment, "type": a.type} for a in request.attachments]
     if request.contact_details:
         body["contact_details"] = [
             {

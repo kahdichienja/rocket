@@ -105,7 +105,7 @@ from sha_claim.facility import (
 from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
-__version__ = "0.1.18"
+__version__ = "0.1.19"
 
 __all__ = [
     "AsyncSHAClient",
@@ -132,6 +132,7 @@ __all__ = [
     "ClaimSession",
     "ClaimWorkflowState",
     "ConfigurationError",
+    "ConsentRoute",
     "ConsentToken",
     "Coverage",
     "CoverageSelection",
@@ -167,7 +168,6 @@ __all__ = [
     "LineEdit",
     "LineGuid",
     "LineResubmission",
-    "ConsentRoute",
     "MatchId",
     "MedicationOrder",
     "ModeOfArrival",
@@ -179,7 +179,6 @@ __all__ = [
     "NotFoundError",
     "OtherIdentification",
     "Otp",
-    "VerificationRequest",
     "PatientContact",
     "PatientId",
     "PatientRecord",
@@ -211,6 +210,7 @@ __all__ = [
     "TransportError",
     "UnexpectedResponseError",
     "UtilizationBalance",
+    "VerificationRequest",
     "VirtualClaim",
     "__version__",
     "activate_facility",

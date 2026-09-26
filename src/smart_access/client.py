@@ -142,9 +142,7 @@ class SessionsResource:
         """List all biometric sessions open for a patient."""
         return await self._list_sessions.execute(patient_number, status)
 
-    async def link(
-        self, session_id: SessionId | int, visit_number: VisitNumber | str
-    ) -> SessionLinkResult:
+    async def link(self, session_id: SessionId | int, visit_number: VisitNumber | str) -> SessionLinkResult:
         """Link an HMIS encounter number to activate a session."""
         return await self._link_session.execute(session_id, visit_number)
 
@@ -154,9 +152,7 @@ class SessionsResource:
         """End an active session."""
         return await self._close_session.execute(session_id, session_number)
 
-    def resume(
-        self, session_id: SessionId | int, patient_number: PatientNumber | str
-    ) -> SmartClaimSession:
+    def resume(self, session_id: SessionId | int, patient_number: PatientNumber | str) -> SmartClaimSession:
         """Attach to an existing session without an upfront network call."""
         return SmartClaimSession(
             client=self._client,

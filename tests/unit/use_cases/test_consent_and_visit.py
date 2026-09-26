@@ -80,7 +80,13 @@ async def test_capture_consent_dedupes_codes_and_forwards() -> None:
     codes = [InterventionCode("SHA-12-001"), InterventionCode("sha-12-001"), InterventionCode("SHA-12-002")]
     await CaptureConsent(gw).execute(P, ServiceType.CAPITATION, codes)
     assert gw.calls == [
-        (P, ServiceType.CAPITATION, (InterventionCode("SHA-12-001"), InterventionCode("SHA-12-002")), None, None)
+        (
+            P,
+            ServiceType.CAPITATION,
+            (InterventionCode("SHA-12-001"), InterventionCode("SHA-12-002")),
+            None,
+            None,
+        )
     ]
 
 

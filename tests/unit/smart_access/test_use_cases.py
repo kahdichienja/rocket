@@ -40,13 +40,17 @@ class FakeVisitGateway:
 
     async def link_session(self, session_id: SessionId, visit_number: VisitNumber) -> SessionLinkResult:
         self.linked.append((session_id, visit_number))
-        return SessionLinkResult(success=True, code="200", message="Linked", response_type=SmartResponseType.SUCCESS)
+        return SessionLinkResult(
+            success=True, code="200", message="Linked", response_type=SmartResponseType.SUCCESS
+        )
 
     async def close_session(
         self, session_id: SessionId, session_number: str | None = None
     ) -> SessionCloseResult:
         self.closed.append((session_id, session_number))
-        return SessionCloseResult(success=True, code="200", message="Closed", response_type=SmartResponseType.SUCCESS)
+        return SessionCloseResult(
+            success=True, code="200", message="Closed", response_type=SmartResponseType.SUCCESS
+        )
 
 
 class FakeClaimGateway:
@@ -56,7 +60,9 @@ class FakeClaimGateway:
 
     async def post_claim(self, claim: SmartClaim) -> ClaimSubmissionResult:
         self.submitted_claims.append(claim)
-        return ClaimSubmissionResult(success=True, code="200", message="Posted", response_type=SmartResponseType.SUCCESS)
+        return ClaimSubmissionResult(
+            success=True, code="200", message="Posted", response_type=SmartResponseType.SUCCESS
+        )
 
     async def post_interim_claim(self, claim: SmartClaim) -> ClaimSubmissionResult:
         return await self.post_claim(claim)
@@ -69,8 +75,12 @@ class FakeClaimGateway:
 
 @pytest.mark.asyncio
 async def test_manage_session_use_cases() -> None:
-    s1 = VisitSession(id=SessionId(1), patient_number=PatientNumber("PT1"), status=SessionStatus.ACTIVE, sp_id=SpId(10))
-    s2 = VisitSession(id=SessionId(2), patient_number=PatientNumber("PT1"), status=SessionStatus.PENDING, sp_id=SpId(10))
+    s1 = VisitSession(
+        id=SessionId(1), patient_number=PatientNumber("PT1"), status=SessionStatus.ACTIVE, sp_id=SpId(10)
+    )
+    s2 = VisitSession(
+        id=SessionId(2), patient_number=PatientNumber("PT1"), status=SessionStatus.PENDING, sp_id=SpId(10)
+    )
     gateway = FakeVisitGateway([s1, s2])
 
     list_uc = ListSessions(gateway)

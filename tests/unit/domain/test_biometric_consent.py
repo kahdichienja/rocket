@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
+from sha_claim.adapters.wire.mappers import to_authorization
 from sha_claim.adapters.wire.requests import authorize
 from sha_claim.adapters.wire.schemas.authorization import AuthorizationWire
-from sha_claim.adapters.wire.mappers import to_authorization
 from sha_claim.domain.codes import InterventionCode
 from sha_claim.domain.consent import BiometricContext
 from sha_claim.domain.eligibility import ConsentRoute, Eligibility
@@ -80,8 +80,10 @@ class TestTheAuthorizeBody:
         body = authorize(P, ServiceType.OUTPATIENT, CODES, None, BiometricContext("1", "w")).json
         assert "ekyc_provider_id" not in body and "provider" not in body
 
-    @pytest.mark.parametrize("agent,station", [("", "w"), ("  ", "w"), ("1", ""), ("1", "  ")])
-    def test_a_capture_without_an_agent_or_a_workstation_is_refused_here(self, agent: str, station: str) -> None:
+    @pytest.mark.parametrize(("agent", "station"), [("", "w"), ("  ", "w"), ("1", ""), ("1", "  ")])
+    def test_a_capture_without_an_agent_or_a_workstation_is_refused_here(
+        self, agent: str, station: str
+    ) -> None:
         """SHA rejects a capture it cannot place, with a message that names neither field. Fail early."""
         with pytest.raises(ValueError):
             BiometricContext(agent_id=agent, work_station_id=station)

@@ -42,6 +42,7 @@ from sha_claim.domain.consent import (
     AuthorizedIntervention,
     BiometricContext,
     BiometricGuid,
+    ElectivePreauth,
     MatchId,
     Otp,
     VerificationRequest,
@@ -75,8 +76,36 @@ from sha_claim.domain.identifiers import (
 )
 from sha_claim.domain.identity import BearerToken, Identity
 from sha_claim.domain.money import Money
+from sha_claim.domain.pomsf import (
+    PomsfBalance,
+    PomsfBenefit,
+    PomsfFamilyMember,
+    PomsfPolicy,
+    policy_year_for,
+)
 from sha_claim.domain.practitioner import PractitionerRef
-from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
+from sha_claim.domain.preauth import (
+    DoctorConsentRequest,
+    ImagingDetails,
+    NoDetails,
+    OncologyDetails,
+    OpticalDetails,
+    PreauthDetails,
+    PreauthItem,
+    Preauthorization,
+    PreauthRequest,
+    RenalDetails,
+    SurgicalDetails,
+)
+from sha_claim.domain.preauth_vocabulary import (
+    AnaesthesiaType,
+    CarcinomaStaging,
+    LensPrescription,
+    MetastasisSite,
+    NewOrReplacement,
+    SessionFrequency,
+    TreatmentSetting,
+)
 from sha_claim.domain.prescription import Dispense, DispensedProduct, Dosage, MedicationOrder, Prescription
 from sha_claim.domain.registry import OtherIdentification, PatientContact, PatientRecord
 from sha_claim.domain.schemes import belongs_to_scheme, canonical_scheme, scheme_family
@@ -105,9 +134,10 @@ from sha_claim.facility import (
 from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
-__version__ = "0.1.19"
+__version__ = "0.1.21"
 
 __all__ = [
+    "AnaesthesiaType",
     "AsyncSHAClient",
     "Attachment",
     "AttachmentId",
@@ -124,6 +154,7 @@ __all__ = [
     "Blocker",
     "BroughtBy",
     "CancelReason",
+    "CarcinomaStaging",
     "ClaimAttachment",
     "ClaimDiagnosis",
     "ClaimGuid",
@@ -146,6 +177,7 @@ __all__ = [
     "DocumentType",
     "Dosage",
     "DownloadLink",
+    "ElectivePreauth",
     "Eligibility",
     "EligibilityStatus",
     "EmergencyCase",
@@ -160,23 +192,30 @@ __all__ = [
     "Icd11Code",
     "IdentificationType",
     "Identity",
+    "ImagingDetails",
     "InterventionCode",
     "InterventionCoverage",
     "Invoice",
     "InvoiceNumber",
+    "LensPrescription",
     "LineAttachment",
     "LineEdit",
     "LineGuid",
     "LineResubmission",
     "MatchId",
     "MedicationOrder",
+    "MetastasisSite",
     "ModeOfArrival",
     "Money",
     "NewClaimLine",
+    "NewOrReplacement",
     "NextOfKin",
     "NextOfKinContact",
     "NextOfKinIdType",
+    "NoDetails",
     "NotFoundError",
+    "OncologyDetails",
+    "OpticalDetails",
     "OtherIdentification",
     "Otp",
     "PatientContact",
@@ -185,7 +224,12 @@ __all__ = [
     "PayerClaimRecord",
     "PaymentMechanism",
     "PermissionDeniedError",
+    "PomsfBalance",
+    "PomsfBenefit",
+    "PomsfFamilyMember",
+    "PomsfPolicy",
     "PractitionerRef",
+    "PreauthDetails",
     "PreauthItem",
     "PreauthRequest",
     "Preauthorization",
@@ -194,6 +238,7 @@ __all__ = [
     "ProtocolLine",
     "RateLimitedError",
     "RegulationBody",
+    "RenalDetails",
     "RequestValidationError",
     "SDKEvent",
     "SHAClaimError",
@@ -202,12 +247,15 @@ __all__ = [
     "SchemeCode",
     "ServerError",
     "ServiceType",
+    "SessionFrequency",
     "StoredFile",
     "SubBenefit",
     "Submission",
     "SubmissionOutcomeUnknownError",
+    "SurgicalDetails",
     "Timeouts",
     "TransportError",
+    "TreatmentSetting",
     "UnexpectedResponseError",
     "UtilizationBalance",
     "VerificationRequest",
@@ -219,5 +267,6 @@ __all__ = [
     "clear_facility",
     "current_facility",
     "facility_scope",
+    "policy_year_for",
     "scheme_family",
 ]

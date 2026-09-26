@@ -8,6 +8,7 @@ from sha_claim.adapters.wire.parsing import parse_date, parse_datetime
 from sha_claim.adapters.wire.schemas.authorization import (
     AuthorizationWire,
     AuthorizedInterventionWire,
+    ElectivePreauthWire,
     VerificationRequestWire,
 )
 from sha_claim.adapters.wire.schemas.benefits import (
@@ -40,6 +41,7 @@ from sha_claim.domain.benefits import (
     BenefitPackage,
     FundLimit,
     InterventionCoverage,
+    RequiredClaimDocument,
     SubBenefit,
     UtilizationBalance,
 )
@@ -55,7 +57,12 @@ from sha_claim.domain.claim import (
     VirtualClaim,
 )
 from sha_claim.domain.codes import Icd11Code, InterventionCode, ProtocolCode
-from sha_claim.domain.consent import Authorization, AuthorizedIntervention, VerificationRequest
+from sha_claim.domain.consent import (
+    Authorization,
+    AuthorizedIntervention,
+    ElectivePreauth,
+    VerificationRequest,
+)
 from sha_claim.domain.eligibility import Coverage, DateRange, Eligibility, Scheme
 from sha_claim.domain.emergency import EmergencyProtocol
 from sha_claim.domain.enums import (
@@ -122,6 +129,22 @@ def to_intervention_coverage(w: InterventionWire) -> InterventionCoverage:
         applicable_schemes=tuple(w.applicable_schemes),
         fund=w.fund,
         sub_benefit_code=w.sub_benefit_code,
+        required_preauth_document_types=tuple(w.required_preauth_document_types),
+        required_claim_documents=tuple(
+            RequiredClaimDocument(
+                key=str(d.get("key", "")),
+                label=str(d.get("label", "")),
+                any_of=tuple(str(x) for x in (d.get("anyOf") or d.get("any_of") or ())),
+            )
+            for d in w.required_claim_documents
+            if isinstance(d, dict)
+        ),
+        requires_surgical_preauth=w.requires_surgical_preauth,
+        requires_renal_preauth=w.requires_renal_preauth,
+        requires_oncology_preauth=w.requires_oncology_preauth,
+        requires_radiology_preauth=w.requires_radiology_preauth,
+        requires_optical_preauth=w.requires_optical_preauth,
+        is_multisession=w.is_multisession,
         extra=w.unmodelled(),
     )
 
@@ -144,7 +167,24 @@ def to_authorization(w: AuthorizationWire) -> Authorization:
         record_id=w.id,
         ekyc_token=w.ekyc_token,
         verification=_to_verification_request(w.sha_verification_request),
+        is_elective=w.is_elective,
+        server_needs_preauth=w.needs_preauth,
+        elective_preauth=_to_elective_preauth(w.elective_preauth),
         extra=w.unmodelled(),
+    )
+
+
+def _to_elective_preauth(w: ElectivePreauthWire | None) -> ElectivePreauth | None:
+    if w is None:
+        return None
+    return ElectivePreauth(
+        is_elective=w.is_elective,
+        status=w.status,
+        doctor_review_status=w.doctor_review_status,
+        preauth_type=w.preauth_type,
+        member_name=w.member_name,
+        service_start=parse_datetime(w.service_start),
+        service_end=parse_datetime(w.service_end),
     )
 
 
@@ -281,6 +321,7 @@ def to_preauthorization(w: PreauthorizationWire) -> Preauthorization:
         member_name=w.member_name,
         description=w.description,
         countdown=w.countdown,
+        is_elective=w.is_elective,
         record_id=w.id,
         extra=w.unmodelled(),
     )

@@ -26,6 +26,15 @@ class SubBenefit:
 
 
 @dataclass(frozen=True, slots=True)
+class RequiredClaimDocument:
+    """One document a claim for this intervention must carry. `any_of` lists the types that satisfy it."""
+
+    key: str
+    label: str
+    any_of: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class InterventionCoverage:
     code: InterventionCode
     name: str
@@ -37,7 +46,41 @@ class InterventionCoverage:
     applicable_schemes: tuple[str, ...]
     fund: str = ""
     sub_benefit_code: str = ""
+    required_preauth_document_types: tuple[str, ...] = ()
+    """What SHA wants attached to the pre-auth — known at selection time, before a visit exists.
+
+    Worth surfacing where the service is chosen rather than where the pre-auth is filed: the documents are
+    gathered by the ward, and a desk that learns of them at submission is a desk that submits without them.
+    """
+    required_claim_documents: tuple[RequiredClaimDocument, ...] = ()
+    """A different list, for the claim itself. Varies by intervention — an inpatient one wants a discharge
+    summary, an outpatient one wants the prescription."""
+    requires_surgical_preauth: bool = False
+    requires_renal_preauth: bool = False
+    requires_oncology_preauth: bool = False
+    requires_radiology_preauth: bool = False
+    requires_optical_preauth: bool = False
+    is_multisession: bool = False
+    """Renal and oncology courses: priced per session rather than per visit."""
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
+
+    @property
+    def preauth_kind(self) -> str:
+        """Which specialised form SHA expects: SURGICAL | RENAL | ONCOLOGY | OPTICAL | IMAGING | NORMAL.
+
+        Read from SHA's own flags rather than inferred from the code family. A guess off `SHA-19-…` is right
+        often enough to be dangerous — it would put a surgeon in front of the wrong form on the day.
+        """
+        for flag, kind in (
+            (self.requires_surgical_preauth, "SURGICAL"),
+            (self.requires_renal_preauth, "RENAL"),
+            (self.requires_oncology_preauth, "ONCOLOGY"),
+            (self.requires_optical_preauth, "OPTICAL"),
+            (self.requires_radiology_preauth, "IMAGING"),
+        ):
+            if flag:
+                return kind
+        return "NORMAL"
 
     @property
     def is_emergency(self) -> bool:

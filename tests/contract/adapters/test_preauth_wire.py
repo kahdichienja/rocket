@@ -36,16 +36,17 @@ def test_create_preauth_multipart_encoding() -> None:
     assert r.form is not None
     assert r.form["consent_token"] == "CR1-ABCDEFGHIJ"
     assert r.form["service_start"] == "2026-09-20T08:00:00+00:00"
-    assert json.loads(r.form["items"]) == [
-        {"item_code": "CS", "item_name": "Cesarean section", "quantity": "1", "unit_price": "30000.00"}
-    ]
-    assert json.loads(r.form["diagnoses"]) == [{"icd_code": "JB0Z"}]
+    # The shape Postman sends: an item is its price, a diagnosis repeats the token, a doctor names the
+    # intervention. The previous expectations here were guesses against an unpublished schema.
+    assert json.loads(r.form["items"]) == [{"unit_price": "30000.00"}]
+    assert json.loads(r.form["diagnoses"]) == [{"consent_token": "CR1-ABCDEFGHIJ", "icd_code": "JB0Z"}]
     assert json.loads(r.form["doctors"]) == [
         {
             "identification_type": "registration_number",
             "identification_number": "A1234",
             "regulation_body": "KMPDC",
             "practitioner_registration_number": "A1234",
+            "intervention_code": "SHA-08-006",
         }
     ]
     assert json.loads(r.form["attachments"]) == []
@@ -58,15 +59,28 @@ def test_create_preauth_attachments_reference_file_parts() -> None:
         Attachment("scan.png", b"\x89PNG", DocumentType.CT_SCAN, "image/png"),
     )
     r = requests.create_preauth(TOKEN, request(attachments=files))
+    # `file_field_name` must name a part that is actually on the form — it named `attachment_0`, which was
+    # never sent, so SHA silently received a pre-auth with no supporting documents at all.
     assert r.files == {
-        "attachment_0": ("form.pdf", b"%PDF-1", "application/pdf"),
-        "attachment_1": ("scan.png", b"\x89PNG", "image/png"),
+        "attachments_0_file_blob": ("form.pdf", b"%PDF-1", "application/pdf"),
+        "attachments_1_file_blob": ("scan.png", b"\x89PNG", "image/png"),
     }
     assert r.form is not None
-    assert json.loads(r.form["attachments"]) == [
-        {"field": "attachment_0", "document_type": "PREAUTH_FORM", "title": "form.pdf"},
-        {"field": "attachment_1", "document_type": "CT_SCAN", "title": "scan.png"},
+    meta = json.loads(r.form["attachments"])
+    assert meta == [
+        {
+            "document_title": "form.pdf",
+            "document_type": "PREAUTH_FORM",
+            "file_field_name": "attachments_0_file_blob",
+        },
+        {
+            "document_title": "scan.png",
+            "document_type": "CT_SCAN",
+            "file_field_name": "attachments_1_file_blob",
+        },
     ]
+    for entry in meta:
+        assert entry["file_field_name"] in r.files
 
 
 def test_preauth_maintenance_requests() -> None:

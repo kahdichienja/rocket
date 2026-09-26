@@ -37,6 +37,7 @@ from sha_claim.domain.enums import BroughtBy, IdentificationType, ModeOfArrival,
 from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import ConsentToken, FacilityCode, FileId, PatientId
 from sha_claim.domain.identity import BearerToken, Identity
+from sha_claim.domain.pomsf import PomsfBalance, parse_pomsf_balances, policy_year_for
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.registry import PatientContact, PatientRecord
 from sha_claim.errors import RequestValidationError, Violation
@@ -150,9 +151,31 @@ class EligibilityResource:
         return await self._gateway.utilization(PatientId.of(patient), InterventionCode.of(intervention))
 
     async def pomsf_balances(
+        self,
+        patient: PatientId | str,
+        policy_year: str | None = None,
+        *,
+        principal_member_number: str | None = None,
+    ) -> PomsfBalance | None:
+        """`GET /patients/pomsf-balances` — what a civil servant's household has left to spend.
+
+        POMSF gives a household a pot against a policy rather than a limit per intervention, and dependants
+        draw on the principal's pot — so pass `principal_member_number` for a dependant, or the balance read
+        is not the one that will be spent.
+
+        `policy_year` defaults to the year covering today (financial years turn on 1 July; see
+        `policy_year_for`). `None` comes back when the server had nothing to say, which is **not** a zero
+        balance — see `PomsfBalance.remaining`.
+        """
+        payload = await self._gateway.pomsf_balances(
+            PatientId.of(patient), policy_year or policy_year_for(), principal_member_number
+        )
+        return parse_pomsf_balances(payload)
+
+    async def pomsf_balances_raw(
         self, patient: PatientId | str, policy_year: str, *, principal_member_number: str | None = None
     ) -> Mapping[str, Any]:
-        """`GET /patients/pomsf-balances` — Public Officers Medical Scheme Fund balances, raw payload."""
+        """The same call, unparsed — for support when a field this SDK does not model is in question."""
         return await self._gateway.pomsf_balances(PatientId.of(patient), policy_year, principal_member_number)
 
     async def bed_occupancy(self, facility: FacilityCode | str) -> BedOccupancy:

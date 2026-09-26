@@ -218,8 +218,8 @@ async def test_preauth_over_http_is_multipart_with_attachment_parts(settings: SH
     assert listed[0].guid == "pg"
     body = create.calls[0].request.content
     assert create.calls[0].request.headers["content-type"].startswith("multipart/form-data")
-    assert b'name="attachment_0"; filename="form.pdf"' in body
-    assert b'name="items"\r\n\r\n[{"item_code": "CS"' in body
+    assert b'name="attachments_0_file_blob"; filename="form.pdf"' in body
+    assert b'name="items"\r\n\r\n[{"unit_price": "30000.00"}]' in body
 
 
 @respx.mock
@@ -369,7 +369,11 @@ async def test_files_and_occupancy_over_http(settings: SHASettings) -> None:
         pomsf = await sha.eligibility.pomsf_balances("CR1111111111111-1", "2026")
 
     assert stored.file_id is not None and link.url == "https://signed"
-    assert beds.occupancy_rate == 0.5 and pomsf["memberNumber"] == "M1"
+    # `pomsf_balances` returns a parsed PomsfBalance now, not the raw payload — see domain/pomsf.py.
+    assert beds.occupancy_rate == 0.5
+    assert pomsf is not None and pomsf.member_number == "M1"
+    # Nothing was said about the benefits, so there is no balance to report — and that is NOT a zero.
+    assert pomsf.remaining is None and not pomsf.is_exhausted
     assert b'filename="x.pdf"' in up.calls[0].request.content
 
 

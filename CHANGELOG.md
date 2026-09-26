@@ -4,6 +4,97 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.22] — 2026-09-26
+
+### Added
+- **Elective pre-authorisations are recognised**, on the preauth (`is_elective`) and on the authorization
+  (`is_elective`, `elective_preauth`, and SHA's own `server_needs_preauth`), with a new `ElectivePreauth`
+  carrying the earlier approval's status, type and service window.
+
+  This is recognition, not a new capability, because **the API offers no way to raise one**. Across the 48
+  endpoints DHA publishes there is no elective endpoint and no elective field on any request body; Postman
+  has neither. `POST /preauths` requires a `consent_token`, which only `POST /claims/visit` issues, which
+  only an authorised consent produces — so a pre-auth cannot exist before the patient has arrived. What
+  makes one elective is that its service is dated later, and when the member returns, SHA reports the
+  approval on the **new authorization** rather than anywhere a facility could look it up. That is the whole
+  of the mechanism, and `elective_preauth` is where it now lands.
+
+- `ElectivePreauth.is_approved` — substring-matched against SHA's several spellings of approval, and
+  **anything unrecognised is not approved**. An elective approval is the one most likely to be assumed: it
+  was granted days ago by someone who may be off today, and a theatre list built on a pre-auth SHA never
+  granted is refused after the operation.
+
+- `Preauthorization.countdown_label()` — reports SHA's `countdown` as a number and names it as SHA's.
+
+### Notes
+- **`countdown` has no published unit.** DHA sends a bare integer, the guides give it no description, and no
+  Postman request produces one; the plain readings — days, hours, sessions — differ by orders of magnitude.
+  Earlier planning for this work assumed seven days. That was an assumption, and an operating list would
+  have been scheduled against it, so nothing here presents it as a deadline until UAT settles it.
+
+### Fixed
+- `Authorization.needs_preauth` now takes SHA's own top-level flag **or** any authorized intervention
+  asking for one, instead of only the latter. An authorization can arrive with no interventions listed while
+  SHA still wants a pre-auth; reading that as "none needed" bills a line SHA refuses.
+
+## [0.1.21] — 2026-09-26
+
+### Fixed
+- **`POST /preauths` multipart was wrong in four places, and attachments were silently lost.** The builder
+  was written against a portal reference that does not publish the inner schema of `items`, `diagnoses`,
+  `doctors` or `attachments`, and carried an `UNVERIFIED` note saying so. Corrected against the published
+  Postman collection:
+  - an attachment entry names its own form part through **`file_field_name`**, and that part must exist —
+    `attachments_0_file_blob`, not `attachment_0`. A file SHA cannot resolve is dropped without complaint,
+    so every pre-auth was reviewed with no supporting documents.
+  - the title field is **`document_title`**, not `title`;
+  - each diagnosis repeats the **`consent_token`** beside its `icd_code`;
+  - an item carries **`unit_price`** only;
+  - a doctor carries the **`intervention_code`** they are attached to.
+
+### Added
+- **Intervention coverage now carries what SHA states about a pre-auth**, instead of dropping it into the
+  untyped `extra` bag: `required_preauth_document_types`, `required_claim_documents`, `is_multisession`, and
+  the five `requires*Preauth` flags behind a `preauth_kind` property. All of it arrives on the coverage
+  lookup, **before a visit exists** — so a desk can be told which documents to gather while the service is
+  still being chosen, and the specialised form is SHA's own answer rather than one inferred from the code
+  family.
+- **The five specialised pre-auth forms**, as a `details` object on `PreauthRequest`: `SurgicalDetails`,
+  `RenalDetails`, `OncologyDetails`, `OpticalDetails`, `ImagingDetails`, with `NoDetails` for a normal one.
+  One endpoint serves all six; only the clinical detail changes.
+- `domain/preauth_vocabulary.py` — the closed choices in one file.
+
+### Notes
+- **DHA publishes these enums twice and the two copies disagree**: the prose guides say `General
+  Anaesthesia`, `Stage 1`, `Once a month`, `Framed`; the Postman collection sends `GENERAL`, `STAGE_1`,
+  `ONCE_A_MONTH`, `FRAMES_LENSES`. The guides also say `number_of_sessions` where Postman sends
+  `number_of_sessions_required`. This release takes Postman's spelling — a runnable artifact beats prose —
+  and records the alternative in `DOCS_SPELLINGS` so a UAT answer is a one-line correction.
+- Optional booleans (`is_co_insured`, and the employment/accident questions on a surgical form) are omitted
+  when unanswered rather than sent as `false`: on those two, a `false` nobody typed is a claim about
+  liability.
+
+## [0.1.20] — 2026-09-26
+
+### Added
+- **POMSF balances (`GET /patients/pomsf-balances`), parsed rather than raw:**
+  - Added `PomsfBalance`, `PomsfPolicy`, `PomsfBenefit` and `PomsfFamilyMember` domain models.
+  - Added `policy_year_for(day)` — POMSF policy years follow Kenya's financial year, which turns on 1 July.
+    Asking for the wrong year returns another year's balance, which reads as a real answer.
+  - `eligibility.pomsf_balances(...)` now returns a `PomsfBalance | None` and defaults `policy_year` to the
+    year covering today. The previous raw payload is still available as `pomsf_balances_raw(...)`.
+
+### Notes
+- DHA publishes the `benefit` array of a member policy as a bare `[{}]`, so the amounts inside it are read
+  by trying several plausible key spellings. Where none is present the SDK reports **`None`, never zero** —
+  `PomsfBenefit.is_known`, `PomsfPolicy.remaining` and `PomsfBalance.remaining` all preserve that
+  distinction, and `is_exhausted` is false for an unknown amount. A desk decides whether to open a visit on
+  this figure, and a fabricated zero would turn away a covered patient.
+
+### Changed
+- **Breaking (internal):** `eligibility.pomsf_balances(...)` returns `PomsfBalance | None` instead of a raw
+  mapping. `policy_year` is now optional.
+
 ## [0.1.19] — 2026-09-26
 
 ### Added

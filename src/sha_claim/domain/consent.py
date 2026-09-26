@@ -126,6 +126,29 @@ class AuthorizedIntervention:
 
 
 @dataclass(frozen=True, slots=True)
+class ElectivePreauth:
+    """An earlier pre-auth, as SHA summarises it on a later authorization."""
+
+    is_elective: bool = False
+    status: str = ""
+    doctor_review_status: str = ""
+    preauth_type: str = ""
+    member_name: str = ""
+    service_start: datetime | None = None
+    service_end: datetime | None = None
+
+    @property
+    def is_approved(self) -> bool:
+        """Approved outright — the only state in which the visit can be billed against it.
+
+        Substring-matched, and anything unrecognised is **not** approved: SHA spells approval several ways
+        and the cost of reading a pending one as approved is a refused claim after the operation.
+        """
+        status = self.status.strip().upper()
+        return "APPROV" in status and not any(w in status for w in ("PENDING", "AWAIT", "REQUEST"))
+
+
+@dataclass(frozen=True, slots=True)
 class Authorization:
     """Snapshot of `POST /claims/authorize` / `GET /claims/authorizations`."""
 
@@ -147,6 +170,24 @@ class Authorization:
     """Present on the biometric path; the same value as `verification.embeded_token`."""
     verification: VerificationRequest | None = None
     """Where the beneficiary proves who they are. Only the biometric path has one."""
+    is_elective: bool = False
+    """This visit is being opened against a pre-auth raised at an earlier one."""
+    server_needs_preauth: bool = False
+    """SHA's own top-level answer, which is not always the one the interventions give.
+
+    Kept separate from the `needs_preauth` property rather than replacing it: that property reads the
+    authorized interventions, and an authorization can arrive with none listed while SHA still says a
+    pre-auth is wanted. The property takes both and errs towards wanting one.
+    """
+    elective_preauth: ElectivePreauth | None = None
+    """The earlier approval, summarised by SHA.
+
+    This is the whole of the elective mechanism as the API actually offers it. A pre-auth is always raised
+    against an *open* visit — `POST /preauths` takes a `consent_token` from `POST /claims/visit` — so there
+    is no such thing as raising one before the patient arrives. What makes it elective is that the service
+    is dated later; and when the patient does come back, SHA reports the approval **here**, on the new
+    authorization, rather than anywhere NaCare could have looked it up.
+    """
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @property
@@ -180,7 +221,12 @@ class Authorization:
 
     @property
     def needs_preauth(self) -> bool:
-        return any(i.needs_preauth for i in self.interventions)
+        """Either SHA's own flag or any authorized intervention asking for one.
+
+        An `or`, not a choice between them. Reading "no pre-auth needed" when one is lets a line be billed
+        that SHA will refuse; the opposite merely prompts for something already in hand.
+        """
+        return self.server_needs_preauth or any(i.needs_preauth for i in self.interventions)
 
     def as_biometric_proof(self) -> BiometricGuid:
         return BiometricGuid(self.guid)

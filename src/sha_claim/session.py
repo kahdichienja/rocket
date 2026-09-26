@@ -37,7 +37,13 @@ from sha_claim.domain.enums import (
 from sha_claim.domain.identifiers import AttachmentId, ConsentToken, InvoiceNumber, LineGuid, PatientId
 from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import PractitionerRef
-from sha_claim.domain.preauth import DoctorConsentRequest, PreauthItem, Preauthorization, PreauthRequest
+from sha_claim.domain.preauth import (
+    DoctorConsentRequest,
+    PreauthDetails,
+    PreauthItem,
+    Preauthorization,
+    PreauthRequest,
+)
 from sha_claim.domain.prescription import (
     Dispense,
     DispensedProduct,
@@ -331,8 +337,13 @@ class ClaimSession:
         doctors: Sequence[PractitionerRef],
         notification_email: str,
         attachments: Sequence[Attachment] = (),
+        details: PreauthDetails | None = None,
     ) -> Preauthorization:
-        """`POST /preauths` — file a pre-authorisation for an intervention flagged `needs_preauth`."""
+        """`POST /preauths` — file a pre-authorisation for an intervention flagged `needs_preauth`.
+
+        `details` carries the specialised half of the form — `SurgicalDetails`, `RenalDetails`,
+        `OncologyDetails`, `OpticalDetails` or `ImagingDetails`. Omitted, this files a normal pre-auth.
+        """
         try:
             request = PreauthRequest(
                 intervention_code=InterventionCode.of(intervention),
@@ -343,6 +354,7 @@ class ClaimSession:
                 doctors=tuple(doctors),
                 provider_notification_email=notification_email,
                 attachments=tuple(attachments),
+                **({"details": details} if details is not None else {}),
             )
         except ValueError as exc:
             raise RequestValidationError([Violation("preauth", str(exc))]) from exc

@@ -29,6 +29,11 @@ class PreauthorizationWire(WireModel):
     description: str = ""
     countdown: int | None = None
     provider_currency: str = ""
+    #: SHA's own mark that this pre-auth was raised ahead of the visit it is for.
+    #:
+    #: Read-only. There is no elective *endpoint* and no elective field on the create request — the whole
+    #: published surface (48 endpoints) has neither — so SHA decides this, not the facility.
+    is_elective: bool = False
 
 
 class DoctorConsentWire(WireModel):

@@ -351,41 +351,52 @@ def _diagnosis_body(token: ConsentToken, icd: Icd11Code, intervention: Intervent
 
 
 def create_preauth(token: ConsentToken, request: PreauthRequest) -> WireRequest:
-    """Multipart with JSON-encoded arrays, mirroring `/claims/lines`.
+    """`POST /preauths` — multipart, with the arrays JSON-encoded into form fields.
 
-    UNVERIFIED (WORKFLOWS Q3): the portal does not publish the inner schema of `items`, `diagnoses`,
-    `doctors`, `attachments`. Field names below reuse the vocabulary the rest of the API uses; the
-    attachment convention ("entries reference uploaded form file fields") is documented on `/claims/emt`.
-    Fix here, and only here, once UAT confirms.
+    The shape is taken from the published Postman collection rather than the portal reference, which does not
+    publish the inner schema of `items`, `diagnoses`, `doctors` or `attachments`. Four things were wrong when
+    it was guessed, and the attachment one silently lost every file:
+
+    * an attachment entry names its own form part through **`file_field_name`**, and that part must exist —
+      `attachments_0_file_blob`, not `attachment_0`;
+    * its title field is **`document_title`**, not `title`;
+    * each diagnosis repeats the **`consent_token`** alongside its `icd_code`;
+    * an item carries **`unit_price`** and nothing else.
+
+    A file SHA cannot resolve from `file_field_name` is dropped without complaint, and attachments are the
+    whole substance of a pre-auth — so this is the part to break the build over if it ever drifts again.
     """
     files: dict[str, tuple[str, bytes, str]] = {}
     attachment_meta: list[dict[str, str]] = []
     for index, attachment in enumerate(request.attachments):
-        part = f"attachment_{index}"
+        part = f"attachments_{index}_file_blob"
         files[part] = (attachment.filename, attachment.content, attachment.content_type)
         attachment_meta.append(
-            {"field": part, "document_type": attachment.document_type.value, "title": attachment.filename}
+            {
+                "document_title": attachment.filename,
+                "document_type": attachment.document_type.value,
+                "file_field_name": part,
+            }
         )
     form = {
         "consent_token": token.value,
         "intervention_code": request.intervention_code.value,
         "service_start": request.service_start.isoformat(),
         "service_end": request.service_end.isoformat(),
-        "items": json.dumps(
+        "items": json.dumps([{"unit_price": i.unit_price.as_wire()} for i in request.items]),
+        "diagnoses": json.dumps(
+            [{"consent_token": token.value, "icd_code": d.value} for d in request.diagnoses]
+        ),
+        "doctors": json.dumps(
             [
-                {
-                    "item_code": i.code,
-                    "item_name": i.description,
-                    "quantity": str(Decimal(i.quantity)),
-                    "unit_price": i.unit_price.as_wire(),
-                }
-                for i in request.items
+                {**_practitioner_fields(d), "intervention_code": request.intervention_code.value}
+                for d in request.doctors
             ]
         ),
-        "diagnoses": json.dumps([{"icd_code": d.value} for d in request.diagnoses]),
-        "doctors": json.dumps([_practitioner_fields(d) for d in request.doctors]),
         "attachments": json.dumps(attachment_meta),
         "provider_notification_email": request.provider_notification_email,
+        # Surgical, renal, oncology, optical or imaging extras; empty for a normal pre-auth.
+        **request.details.as_payload(),
     }
     return WireRequest(
         "POST", "/preauths", form=form, files=files or None, multipart=True, timeout=TimeoutKind.UPLOAD

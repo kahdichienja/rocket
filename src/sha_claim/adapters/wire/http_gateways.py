@@ -35,7 +35,7 @@ from sha_claim.adapters.wire.schemas.emergency import EmergencyProtocolWire
 from sha_claim.adapters.wire.schemas.files import DownloadLinkWire, StoredFileWire
 from sha_claim.adapters.wire.schemas.preauth import DoctorConsentWire, PreauthorizationWire
 from sha_claim.adapters.wire.schemas.prescription import DispenseWire, PrescriptionWire
-from sha_claim.adapters.wire.schemas.registry import PatientContactWire, PatientRecordWire
+from sha_claim.adapters.wire.schemas.registry import HealthWorkerWire, PatientContactWire, PatientRecordWire
 from sha_claim.adapters.wire.schemas.shr import (
     ShrBundleReceiptWire,
     ShrConsentStatusWire,
@@ -84,7 +84,7 @@ from sha_claim.domain.identifiers import (
     LineGuid,
     PatientId,
 )
-from sha_claim.domain.practitioner import PractitionerRef
+from sha_claim.domain.practitioner import HealthWorker, PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, Preauthorization, PreauthRequest
 from sha_claim.domain.prescription import Dispense, DispenseRequest, Prescription, PrescriptionRequest
 from sha_claim.domain.registry import PatientContact, PatientRecord
@@ -547,7 +547,8 @@ class HttpShrGateway:
                 search=search,
             )
         )
-        return response.json if isinstance(response.json, Mapping) else {}
+        body = response.json()
+        return body if isinstance(body, Mapping) else {}
 
     async def submit_bundle(
         self, token: ShrConsentTokenValue, bundle: Mapping[str, Any], *, callback_url: str = ""
@@ -559,4 +560,33 @@ class HttpShrGateway:
 
     async def resource_labels(self, resource_name: str = "", code: str = "") -> Mapping[str, Any]:
         response = await self._transport.send(requests.shr_resource_labels(resource_name, code))
-        return response.json if isinstance(response.json, Mapping) else {}
+        body = response.json()
+        return body if isinstance(body, Mapping) else {}
+
+
+class HttpHealthWorkerGateway:
+    """The Health Worker Registry — `GET /api/v1/professionals`."""
+
+    def __init__(self, transport: Transport) -> None:
+        self._transport = transport
+
+    async def find(
+        self,
+        identification_number: str,
+        identification_type: IdentificationType,
+        regulator: str = "",
+    ) -> HealthWorker | None:
+        response = await self._transport.send(
+            requests.find_health_worker(identification_number, identification_type, regulator)
+        )
+        # DHA answers with a bare object for some lookups and a paged list for others.
+        body: Any = response.json()
+        if isinstance(body, Mapping):
+            results = body.get("results")
+            if isinstance(results, list):
+                body = results[0] if results else None
+        elif isinstance(body, list):
+            body = body[0] if body else None
+        if not isinstance(body, Mapping) or not body:
+            return None
+        return mappers.to_health_worker(HealthWorkerWire.model_validate(body))

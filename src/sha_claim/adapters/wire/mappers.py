@@ -35,7 +35,7 @@ from sha_claim.adapters.wire.schemas.emergency import EmergencyProtocolWire
 from sha_claim.adapters.wire.schemas.files import DownloadLinkWire, StoredFileWire
 from sha_claim.adapters.wire.schemas.preauth import PreauthorizationWire
 from sha_claim.adapters.wire.schemas.prescription import DispenseWire, DosageWire, PrescriptionWire
-from sha_claim.adapters.wire.schemas.registry import PatientContactWire, PatientRecordWire
+from sha_claim.adapters.wire.schemas.registry import HealthWorkerWire, PatientContactWire, PatientRecordWire
 from sha_claim.adapters.wire.schemas.shr import (
     ShrBundleReceiptWire,
     ShrConsentStatusWire,
@@ -91,6 +91,7 @@ from sha_claim.domain.identifiers import (
     PatientId,
 )
 from sha_claim.domain.money import Money
+from sha_claim.domain.practitioner import HealthWorker
 from sha_claim.domain.preauth import Preauthorization
 from sha_claim.domain.prescription import Dispense, Dosage, Prescription
 from sha_claim.domain.registry import OtherIdentification, PatientContact, PatientRecord
@@ -687,5 +688,17 @@ def to_shr_bundle_receipt(w: ShrBundleReceiptWire) -> ShrBundleReceipt:
         status=w.status,
         message=w.message,
         mediator_id=w.mediator_id,
+        extra=w.unmodelled(),
+    )
+
+
+def to_health_worker(w: HealthWorkerWire) -> HealthWorker:
+    return HealthWorker(
+        registry_id=w.registry_id or w.id,
+        registration_number=w.registration_number,
+        name=w.name or w.full_name,
+        regulator=w.regulator,
+        status=w.status,
+        specialty=w.specialty,
         extra=w.unmodelled(),
     )

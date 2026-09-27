@@ -4,6 +4,22 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.25] — 2026-09-27
+
+### Added
+- **The Health Worker Registry** — `client.health_workers.find`, over `GET /api/v1/professionals`. Two
+  uses: it resolves a regulator's registration number to the registry id the SHR wants as
+  `practitioner_id` (the same person, a different identifier, and not interchangeable), and it checks a
+  registration number belongs to somebody real *before* a pre-auth is filed against it, instead of finding
+  out from a rejection days later. Answers `None` when the registry holds nobody — which is an answer.
+
+### Fixed
+- **The SHR record fetch never returned anything.** `WireResponse.json` is a method, and the first cut of
+  the gateway wrote `response.json if isinstance(response.json, Mapping) else {}` — which compares a bound
+  method against `Mapping`, is always false, and so returned `{}` for every patient. Nothing would have
+  looked broken: the panel would simply have said "no records", for everyone, for ever. Caught by mypy's
+  `truthy-function` check before it shipped, and now pinned by a test that asserts the bundle survives.
+
 ## [0.1.24] — 2026-09-27
 
 ### Added

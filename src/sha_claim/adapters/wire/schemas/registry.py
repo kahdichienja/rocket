@@ -46,3 +46,16 @@ class PatientContactWire(WireModel):
     active: bool = False
     is_main_contact: bool = False
     next_of_kin_full_name: str = ""
+
+
+class HealthWorkerWire(WireModel):
+    """`GET /api/v1/professionals`. DHA publishes no shape for it, so every field is optional."""
+
+    id: str = ""
+    registry_id: str = ""
+    registration_number: str = ""
+    name: str = ""
+    full_name: str = ""
+    regulator: str = ""
+    status: str = ""
+    specialty: str = ""

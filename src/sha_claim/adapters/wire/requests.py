@@ -834,3 +834,23 @@ def shr_resource_labels(resource_name: str = "", code: str = "") -> WireRequest:
     if code:
         params["code"] = code
     return WireRequest("GET", "/shr/resource-labels", params=params)
+
+
+def find_health_worker(
+    identification_number: str,
+    identification_type: IdentificationType = IdentificationType.NATIONAL_ID,
+    regulator: str = "",
+) -> WireRequest:
+    """`GET /api/v1/professionals` — the Health Worker Registry.
+
+    Two uses. It resolves a regulator's registration number to the registry id the Shared Health Record
+    wants as `practitioner_id`, and it checks a registration number belongs to somebody real before a
+    pre-auth is filed against it — which is otherwise found out by a rejection days later.
+    """
+    params = {
+        "identification_number": identification_number,
+        "identification_type": identification_type.value,
+    }
+    if regulator:
+        params["regulator"] = regulator
+    return WireRequest("GET", "/professionals", params=params)

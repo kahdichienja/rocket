@@ -153,3 +153,37 @@ class TestConsentStatus:
         )
         assert isinstance(v.consent_token, ShrConsentTokenValue)
         assert v.visit_id == "f5c2fd92"
+
+
+class TestTheResponseIsActuallyRead:
+    """`WireResponse.json` is a *method*.
+
+    Written because the first cut of this gateway did `response.json if isinstance(response.json, Mapping)`,
+    which compares a bound method against `Mapping` — always false, so every record fetch returned `{}`.
+    The panel would have shown "no records" for every patient and nothing would have looked broken.
+    """
+
+    async def test_records_come_back_rather_than_an_empty_mapping(self) -> None:
+        from sha_claim.adapters.wire.http_gateways import HttpShrGateway
+        from sha_claim.adapters.wire.transport import WireResponse
+
+        bundle = {"resourceType": "Bundle", "type": "searchset", "entry": [{"resource": {"id": "obs-1"}}]}
+
+        class _Transport:
+            async def send(self, request: object) -> WireResponse:
+                import json as _json
+
+                return WireResponse(status=200, headers={}, body=_json.dumps(bundle).encode())
+
+        got = await HttpShrGateway(_Transport()).patient_records(TOKEN, "CR-1", "HWR-9", ["Observation"])
+        assert got == bundle, "the FHIR bundle must survive the gateway, not be flattened to {}"
+
+    async def test_a_body_that_is_not_an_object_becomes_an_empty_mapping(self) -> None:
+        from sha_claim.adapters.wire.http_gateways import HttpShrGateway
+        from sha_claim.adapters.wire.transport import WireResponse
+
+        class _Transport:
+            async def send(self, request: object) -> WireResponse:
+                return WireResponse(status=200, headers={}, body=b"[]")
+
+        assert await HttpShrGateway(_Transport()).patient_records(TOKEN, "CR-1", "HWR-9") == {}

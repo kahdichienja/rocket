@@ -16,6 +16,7 @@ from sha_claim.adapters.wire.http_gateways import (
     HttpEligibilityGateway,
     HttpEmergencyGateway,
     HttpFileGateway,
+    HttpHealthWorkerGateway,
     HttpPreauthGateway,
     HttpPrescriptionGateway,
     HttpRegistryGateway,
@@ -39,7 +40,7 @@ from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import ConsentToken, FacilityCode, FileId, PatientId
 from sha_claim.domain.identity import BearerToken, Identity
 from sha_claim.domain.pomsf import PomsfBalance, parse_pomsf_balances, policy_year_for
-from sha_claim.domain.practitioner import PractitionerRef
+from sha_claim.domain.practitioner import HealthWorker, PractitionerRef
 from sha_claim.domain.registry import PatientContact, PatientRecord
 from sha_claim.domain.shr import (
     ShrBundleReceipt,
@@ -385,6 +386,26 @@ class EmergencyResource:
         return await self._gateways.emergency.protocols(InterventionCode.of(intervention), active)
 
 
+class HealthWorkersResource:
+    """The Health Worker Registry.
+
+    Resolves a regulator's registration number to the registry id the SHR wants as `practitioner_id`, and
+    checks a number belongs to somebody real before a pre-auth is filed against it.
+    """
+
+    def __init__(self, gateway: HttpHealthWorkerGateway) -> None:
+        self._gateway = gateway
+
+    async def find(
+        self,
+        registration_number: str,
+        identification_type: IdentificationType = IdentificationType.REGISTRATION_NUMBER,
+        regulator: str = "",
+    ) -> HealthWorker | None:
+        """`None` when the registry holds nobody with that number — which is an answer, not an error."""
+        return await self._gateway.find(registration_number, identification_type, regulator)
+
+
 class ShrResource:
     """The Shared Health Record — the patient's history from *other* facilities.
 
@@ -544,6 +565,7 @@ class AsyncSHAClient:
         self.emergency = EmergencyResource(gateways)
         self.files = FilesResource(HttpFileGateway(self._transport))
         self.shr = ShrResource(HttpShrGateway(self._transport))
+        self.health_workers = HealthWorkersResource(HttpHealthWorkerGateway(self._transport))
 
     @classmethod
     def from_env(cls, *, on_event: EventHook | None = None) -> Self:

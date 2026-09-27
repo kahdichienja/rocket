@@ -200,14 +200,18 @@ class TestTheHealthWorkerRegistry:
         with pytest.raises(ValueError, match="regulator"):
             requests.find_health_worker("A12345")
 
-    def test_the_regulator_is_sent_lower_case(self) -> None:
-        """DHA lists its choices in lower case and rejects `KMPDC`, which is how every other part of this
-        API spells it."""
-        wire = requests.find_health_worker("A12345", regulator="KMPDC")
-        assert wire.params["regulator"] == "kmpdc"
+    def test_the_regulator_is_sent_upper_case(self) -> None:
+        """DHA's rejection lists `[kmpdc coc ppb nck]` in lower case and then **refuses** lower case.
+
+        One spelling at a time on UAT, 2026-09-27: `kmpdc`, `Kmpdc` and `ppb` were rejected as invalid;
+        `KMPDC` and `PPB` reached the registry. The message describes a set it does not implement, so
+        following it literally is what broke this.
+        """
+        assert requests.find_health_worker("A12345", regulator="kmpdc").params["regulator"] == "KMPDC"
+        assert requests.find_health_worker("A12345", regulator="KMPDC").params["regulator"] == "KMPDC"
 
     def test_it_looks_up_by_registration_number_by_default(self) -> None:
-        wire = requests.find_health_worker("A12345", regulator="kmpdc")
+        wire = requests.find_health_worker("A12345", regulator="KMPDC")
         assert wire.params["identification_number"] == "A12345"
         assert wire.params["identification_type"] == "registration_number"
 
@@ -239,7 +243,7 @@ class TestErrorsAreNotMistakenForData:
 
         with pytest.raises(SHAClaimError):
             await HttpHealthWorkerGateway(_Transport()).find(
-                "A12345", IdentificationType.REGISTRATION_NUMBER, "kmpdc"
+                "A12345", IdentificationType.REGISTRATION_NUMBER, "KMPDC"
             )
 
     async def test_no_membership_is_a_not_found_rather_than_a_failure(self) -> None:
@@ -257,7 +261,7 @@ class TestErrorsAreNotMistakenForData:
                 )
 
         got = await HttpHealthWorkerGateway(_Transport()).find(
-            "A12345", IdentificationType.REGISTRATION_NUMBER, "kmpdc"
+            "A12345", IdentificationType.REGISTRATION_NUMBER, "KMPDC"
         )
         assert got is None
 

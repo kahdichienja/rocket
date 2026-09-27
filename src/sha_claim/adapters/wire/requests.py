@@ -847,15 +847,25 @@ def find_health_worker(
     wants as `practitioner_id`, and it checks a registration number belongs to somebody real before a
     pre-auth is filed against it — which is otherwise found out by a rejection days later.
 
-    **`regulator` is required and lower-case.** Omitting it is refused outright (UAT, 2026-09-27):
-    `invalid practitioner regulator:  valid choices are [kmpdc coc ppb nck]`. Note `ppb` — the Pharmacy and
-    Poisons Board — which `RegulationBody` does not carry because a claim never names one.
+    **`regulator` is required, and UPPER-case — not the spelling DHA's own error prints.** Its rejection
+    reads `invalid practitioner regulator: kmpdc valid choices are [kmpdc coc ppb nck]`, which lists the
+    choices in lower case and refuses them in lower case. Tested one spelling at a time on UAT, 2026-09-27:
+
+        kmpdc  → rejected        KMPDC → accepted
+        Kmpdc  → rejected        PPB   → accepted
+        ppb    → rejected
+
+    So the message is describing a case-insensitive set it does not implement. Sent upper-case, which is
+    also how every other part of this API spells a regulator.
+
+    Note `ppb` — the Pharmacy and Poisons Board — which `RegulationBody` does not carry, because a claim
+    never names one.
     """
     if not regulator.strip():
-        raise ValueError("the health worker registry requires a regulator: kmpdc, coc, ppb or nck")
+        raise ValueError("the health worker registry requires a regulator: KMPDC, COC, PPB or NCK")
     params = {
         "identification_number": identification_number,
         "identification_type": identification_type.value,
-        "regulator": regulator.strip().lower(),
+        "regulator": regulator.strip().upper(),
     }
     return WireRequest("GET", "/professionals", params=params)

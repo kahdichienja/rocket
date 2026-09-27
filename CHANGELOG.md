@@ -4,6 +4,20 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.28] — 2026-09-27
+
+### Fixed
+- **`regulator` is sent UPPER-case.** 0.1.27 lower-cased it, following DHA's own rejection message —
+  `invalid practitioner regulator: kmpdc valid choices are [kmpdc coc ppb nck]` — which lists the choices
+  in lower case and then refuses them in lower case. Tested one spelling at a time on UAT:
+
+        kmpdc  → rejected        KMPDC → accepted
+        Kmpdc  → rejected        PPB   → accepted
+        ppb    → rejected
+
+  The message describes a case-insensitive set that is not implemented. Reading it literally is what broke
+  this, and the lower-case release never reached a caller.
+
 ## [0.1.27] — 2026-09-27
 
 ### Fixed

@@ -4,6 +4,27 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.29] — 2026-09-27
+
+### Fixed
+- **An upstream crash was being reported as a claim rejection.** DHA answered a live claim submission with
+  **400** whose body was its own upstream's HTML error page — `<title>Server Error (500)</title>`. Taking
+  the status line at face value turned *"SHA crashed and we do not know whether the claim went through"*
+  into *"SHA rejected your claim"*.
+
+  That distinction decides what a desk does next. A rejection says fix the claim and resend; a crash says
+  the outcome is unknown and resending may duplicate a claim that already landed — on a national system,
+  against a real invoice.
+
+  A body that is HTML is now treated as an upstream failure whatever the status says: this API answers
+  JSON for everything, so an error page is not an answer at all. It raises `TransportError`, which
+  `SubmitClaim` turns into `SubmissionOutcomeUnknownError` and the caller parks in SUBMIT_UNKNOWN for
+  `preview` to resolve. An ordinary JSON rejection is untouched and still a rejection.
+
+- **The headline is a sentence, not a page of markup.** The error read `failed to perform requested claim
+  operation: <!doctype html> <html lang="en"> <head> <title>…` in red, in the UI. It now reads
+  *"SHA's own server failed (Server Error (500))"*; the raw body is still on the exception for support.
+
 ## [0.1.28] — 2026-09-27
 
 ### Fixed

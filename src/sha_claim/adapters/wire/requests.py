@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from sha_claim.adapters.wire.transport import TimeoutKind, WireRequest
 from sha_claim.domain.attachments import Attachment
@@ -26,6 +27,7 @@ from sha_claim.domain.identifiers import (
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, PreauthRequest
 from sha_claim.domain.prescription import DispenseRequest, MedicationOrder, PrescriptionRequest
+from sha_claim.domain.shr import ShrConsentRequest, ShrConsentTokenValue
 from sha_claim.errors import RequestValidationError, Violation
 
 
@@ -725,3 +727,110 @@ def upload(filename: str, content: bytes, content_type: str) -> WireRequest:
 
 def download_link(file_id: FileId) -> WireRequest:
     return WireRequest("GET", f"/uploads/{file_id.value}")
+
+
+# ── Shared Health Record ──
+#
+# Its own consent, separate from the visit's. Reading and writing both carry the per-visit token in
+# `X-Consent-Token`; the consent calls that obtain that token do not, because they are what issues it.
+
+
+def request_shr_consent(request: ShrConsentRequest) -> WireRequest:
+    """`POST /shr/consents` — asks DHA to text the patient a code for record access."""
+    return WireRequest("POST", "/shr/consents", json=request.as_payload())
+
+
+def verify_shr_consent(consent_id: str, otp: str, otp_record: str) -> WireRequest:
+    """`POST /shr/consents/{id}/verify` — the code plus the record it was issued against.
+
+    `otp_record` is not decorative: a resend issues a fresh one, and verifying with the value from the
+    original request fails after a resend.
+    """
+    return WireRequest(
+        "POST",
+        f"/shr/consents/{consent_id}/verify",
+        json={"otp": otp, "otp_record": otp_record},
+    )
+
+
+def shr_consent_status(consent_id: str) -> WireRequest:
+    """`GET /shr/consents/{id}/status` — poll while the patient works through the OTP."""
+    return WireRequest("GET", f"/shr/consents/{consent_id}/status")
+
+
+def resend_shr_otp(consent_id: str) -> WireRequest:
+    """`POST /shr/consents/{id}/resend-otp` — answers with a **new** `otp_record`."""
+    return WireRequest("POST", f"/shr/consents/{consent_id}/resend-otp")
+
+
+def refresh_shr_consent(visit_id: str) -> WireRequest:
+    """`POST /shr/visits/{id}/refresh` — a fresh token while the visit is still open."""
+    return WireRequest("POST", f"/shr/visits/{visit_id}/refresh")
+
+
+def close_shr_visit(visit_id: str) -> WireRequest:
+    """`POST /shr/visits/{id}/close` — after this the token can no longer be refreshed."""
+    return WireRequest("POST", f"/shr/visits/{visit_id}/close")
+
+
+def fetch_shr_records(
+    token: ShrConsentTokenValue,
+    cr_id: str,
+    practitioner_id: str,
+    resources: Sequence[str] = (),
+    *,
+    resource_id: str = "",
+    page_token: str = "",
+    search: Mapping[str, str] | None = None,
+) -> WireRequest:
+    """`GET /shr/patient-records` — the patient's history from every facility that has treated them.
+
+    `practitioner_id` is a **Health Worker Registry** id, not the KMPDC registration number a claim uses;
+    they are different identifiers for the same person and DHA wants the HWR one here.
+
+    Any further FHIR search parameters are forwarded upstream unchanged, so `search` is passed through
+    rather than validated — this SDK does not re-implement FHIR search.
+    """
+    params: dict[str, str] = {"cr_id": cr_id, "practitioner_id": practitioner_id}
+    if resources:
+        params["resources"] = ",".join(resources)
+    if resource_id:
+        params["_id"] = resource_id
+    if page_token:
+        params["page_token"] = page_token
+    params.update(search or {})
+    return WireRequest(
+        "GET",
+        "/shr/patient-records",
+        params=params,
+        headers={"X-Consent-Token": token.value},
+    )
+
+
+def submit_shr_bundle(
+    token: ShrConsentTokenValue,
+    bundle: Mapping[str, Any],
+    *,
+    callback_url: str = "",
+) -> WireRequest:
+    """`POST /shr/bundles` — push our own encounter into the SHR.
+
+    DHA enforces only that the body is a FHIR `Bundle`; everything inside is validated upstream and
+    asynchronously, so a 200 means the envelope was accepted, not that the resources were stored. The
+    Encounter must reference the visit's EpisodeOfCare and every clinical resource must reference that
+    Encounter — a rule DHA states but does not check here, so a malformed bundle fails silently later.
+    """
+    headers = {"X-Consent-Token": token.value}
+    if callback_url:
+        headers["X-HIE-Callback"] = callback_url
+    return WireRequest("POST", "/shr/bundles", json=dict(bundle), headers=headers)
+
+
+def shr_resource_labels(resource_name: str = "", code: str = "") -> WireRequest:
+    """`GET /shr/resource-labels` — what a consent grants access to. One of the two is required."""
+    params: dict[str, str] = {}
+    if resource_name:
+        params["resource_name"] = resource_name
+    if code:
+        params["code"] = code
+    return WireRequest("GET", "/shr/resource-labels", params=params)

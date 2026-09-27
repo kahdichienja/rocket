@@ -87,6 +87,8 @@ class HttpxTransport:
         scope = current_facility() or self._default_facility
         if scope is not None:
             headers.update(scope.headers())  # both headers or neither — DHA ignores a lone one
+        # Last, so a request that carries its own (the SHR consent token) wins over anything above.
+        headers.update(request.headers)
         timeout = self._timeout_for(request.timeout)
         data, files = _encode_body(request)
         raw = await self._http.request(

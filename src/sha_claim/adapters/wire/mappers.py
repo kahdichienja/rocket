@@ -36,6 +36,13 @@ from sha_claim.adapters.wire.schemas.files import DownloadLinkWire, StoredFileWi
 from sha_claim.adapters.wire.schemas.preauth import PreauthorizationWire
 from sha_claim.adapters.wire.schemas.prescription import DispenseWire, DosageWire, PrescriptionWire
 from sha_claim.adapters.wire.schemas.registry import PatientContactWire, PatientRecordWire
+from sha_claim.adapters.wire.schemas.shr import (
+    ShrBundleReceiptWire,
+    ShrConsentStatusWire,
+    ShrConsentWire,
+    ShrVerificationWire,
+    ShrVisitClosedWire,
+)
 from sha_claim.domain.benefits import (
     BedOccupancy,
     BenefitPackage,
@@ -87,6 +94,14 @@ from sha_claim.domain.money import Money
 from sha_claim.domain.preauth import Preauthorization
 from sha_claim.domain.prescription import Dispense, Dosage, Prescription
 from sha_claim.domain.registry import OtherIdentification, PatientContact, PatientRecord
+from sha_claim.domain.shr import (
+    ShrBundleReceipt,
+    ShrConsent,
+    ShrConsentState,
+    ShrConsentTokenValue,
+    ShrVerification,
+    ShrVisitClosed,
+)
 
 
 def to_eligibility(w: EligibilityWire) -> Eligibility:
@@ -621,5 +636,56 @@ def to_patient_contact(w: PatientContactWire) -> PatientContact:
         is_active=w.active,
         is_main=w.is_main_contact,
         next_of_kin_full_name=w.next_of_kin_full_name,
+        extra=w.unmodelled(),
+    )
+
+
+# ── Shared Health Record ──
+
+
+def to_shr_consent(w: ShrConsentWire) -> ShrConsent:
+    return ShrConsent(
+        consent_id=w.consent_id,
+        status=w.consent_status,
+        otp_record=w.otp_record,
+        visit_type=w.visit_type,
+        message=w.message,
+        extra=w.unmodelled(),
+    )
+
+
+def to_shr_verification(w: ShrVerificationWire) -> ShrVerification:
+    return ShrVerification(
+        consent_token=ShrConsentTokenValue(w.consent_token),
+        visit_id=w.visit_id,
+        message=w.message,
+        extra=w.unmodelled(),
+    )
+
+
+def to_shr_consent_state(w: ShrConsentStatusWire) -> ShrConsentState:
+    return ShrConsentState(
+        consent_id=w.consent_id,
+        status=w.consent_status,
+        visit_id=w.visit_id,
+        message=w.message,
+        extra=w.unmodelled(),
+    )
+
+
+def to_shr_visit_closed(w: ShrVisitClosedWire) -> ShrVisitClosed:
+    return ShrVisitClosed(
+        visit_id=w.visit_id,
+        consent_id=w.consent_id,
+        end_date=parse_datetime(w.end_date),
+        message=w.message,
+    )
+
+
+def to_shr_bundle_receipt(w: ShrBundleReceiptWire) -> ShrBundleReceipt:
+    return ShrBundleReceipt(
+        status=w.status,
+        message=w.message,
+        mediator_id=w.mediator_id,
         extra=w.unmodelled(),
     )

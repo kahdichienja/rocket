@@ -25,6 +25,13 @@ class WireRequest:
     multipart: bool = (
         False  # force multipart/form-data even when `files` is empty (the API expects it for /claims/lines)
     )
+    headers: Mapping[str, str] = field(default_factory=dict)
+    """Per-request headers, merged over the transport's own.
+
+    Only the Shared Health Record needs these: its reads and writes carry the per-visit consent token in
+    `X-Consent-Token`, which is a credential rather than a routing detail, so it belongs on the one request
+    that needs it instead of on the client.
+    """
     timeout: TimeoutKind = TimeoutKind.DEFAULT
     authenticated: bool = True
     retry_safe: bool = False  # opt a POST into retries (e.g. /claims/preview is a read)

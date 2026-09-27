@@ -19,6 +19,7 @@ from sha_claim.adapters.wire.http_gateways import (
     HttpPreauthGateway,
     HttpPrescriptionGateway,
     HttpRegistryGateway,
+    HttpShrGateway,
     HttpVirtualClaimGateway,
 )
 from sha_claim.adapters.wire.transport import Transport
@@ -40,6 +41,16 @@ from sha_claim.domain.identity import BearerToken, Identity
 from sha_claim.domain.pomsf import PomsfBalance, parse_pomsf_balances, policy_year_for
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.registry import PatientContact, PatientRecord
+from sha_claim.domain.shr import (
+    ShrBundleReceipt,
+    ShrConsent,
+    ShrConsentRequest,
+    ShrConsentState,
+    ShrConsentTokenValue,
+    ShrVerification,
+    ShrVisitClosed,
+    ShrVisitType,
+)
 from sha_claim.errors import RequestValidationError, Violation
 from sha_claim.events import EventHook
 from sha_claim.facility import FacilityScope
@@ -374,6 +385,109 @@ class EmergencyResource:
         return await self._gateways.emergency.protocols(InterventionCode.of(intervention), active)
 
 
+class ShrResource:
+    """The Shared Health Record — the patient's history from *other* facilities.
+
+    Separate from everything else on this client, and separately consented: a member who agreed to the
+    visit has not agreed to their records being read, and DHA sends a second OTP for that.
+
+    The usual order is `request_consent` → patient reads out the code → `verify` → `records`. The token
+    `verify` returns is a credential: it opens one patient's history across every facility that has treated
+    them, so it belongs server-side and should never be handed to a browser.
+    """
+
+    def __init__(self, gateway: HttpShrGateway) -> None:
+        self._gateway = gateway
+
+    async def request_consent(
+        self,
+        cr_id: str,
+        facility_id: str,
+        requested_by: str,
+        visit_type: ShrVisitType = ShrVisitType.OUTPATIENT,
+    ) -> ShrConsent:
+        """Ask DHA to text the patient a code. Answers with the `consent_id` and `otp_record`."""
+        return await self._gateway.request_consent(
+            ShrConsentRequest(
+                cr_id=cr_id, facility_id=facility_id, requested_by=requested_by, visit_type=visit_type
+            )
+        )
+
+    async def verify(self, consent_id: str, otp: str, otp_record: str) -> ShrVerification:
+        """Exchange the code for the per-visit token.
+
+        `otp_record` must be the one from the *most recent* request or resend — a resend issues a new one
+        and the old value stops working.
+        """
+        return await self._gateway.verify_consent(consent_id, otp, otp_record)
+
+    async def status(self, consent_id: str) -> ShrConsentState:
+        return await self._gateway.consent_status(consent_id)
+
+    async def resend_otp(self, consent_id: str) -> ShrConsent:
+        """Send the code again. **Use the `otp_record` this returns**, not the original."""
+        return await self._gateway.resend_otp(consent_id)
+
+    async def refresh(self, visit_id: str) -> ShrConsentTokenValue:
+        """A fresh token for a visit that is still open."""
+        return await self._gateway.refresh(visit_id)
+
+    async def close(self, visit_id: str) -> ShrVisitClosed:
+        """Close the visit. The token cannot be refreshed afterwards."""
+        return await self._gateway.close_visit(visit_id)
+
+    async def records(
+        self,
+        token: ShrConsentTokenValue | str,
+        cr_id: str,
+        practitioner_id: str,
+        resources: Sequence[str] = (),
+        *,
+        resource_id: str = "",
+        page_token: str = "",
+        search: Mapping[str, str] | None = None,
+    ) -> Mapping[str, Any]:
+        """The patient's records, as the FHIR search result DHA returned.
+
+        `practitioner_id` is the **Health Worker Registry** id of the clinician asking — not their KMPDC
+        registration number, which is what a claim uses. DHA records who read the record.
+        """
+        return await self._gateway.patient_records(
+            _shr_token(token),
+            cr_id,
+            practitioner_id,
+            resources,
+            resource_id=resource_id,
+            page_token=page_token,
+            search=search,
+        )
+
+    async def submit(
+        self,
+        token: ShrConsentTokenValue | str,
+        bundle: Mapping[str, Any],
+        *,
+        callback_url: str = "",
+    ) -> ShrBundleReceipt:
+        """Push a FHIR `collection` Bundle into the SHR.
+
+        A `success` means DHA accepted the envelope. The contents are validated upstream and
+        asynchronously, so it is **not** confirmation that the resources were stored — pass
+        `callback_url` if you need to hear the real outcome.
+        """
+        return await self._gateway.submit_bundle(_shr_token(token), bundle, callback_url=callback_url)
+
+    async def resource_labels(self, resource_name: str = "", code: str = "") -> Mapping[str, Any]:
+        """What a consent grants access to. DHA requires at least one of the two filters."""
+        if not resource_name and not code:
+            raise ValueError("resource_labels needs a resource_name or a code")
+        return await self._gateway.resource_labels(resource_name, code)
+
+
+def _shr_token(token: ShrConsentTokenValue | str) -> ShrConsentTokenValue:
+    return token if isinstance(token, ShrConsentTokenValue) else ShrConsentTokenValue(token)
+
+
 class AsyncSHAClient:
     """Entry point. Use as `async with AsyncSHAClient.from_env() as sha:`.
 
@@ -429,6 +543,7 @@ class AsyncSHAClient:
         self.claims = ClaimsResource(gateways)
         self.emergency = EmergencyResource(gateways)
         self.files = FilesResource(HttpFileGateway(self._transport))
+        self.shr = ShrResource(HttpShrGateway(self._transport))
 
     @classmethod
     def from_env(cls, *, on_event: EventHook | None = None) -> Self:

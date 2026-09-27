@@ -109,6 +109,16 @@ from sha_claim.domain.preauth_vocabulary import (
 from sha_claim.domain.prescription import Dispense, DispensedProduct, Dosage, MedicationOrder, Prescription
 from sha_claim.domain.registry import OtherIdentification, PatientContact, PatientRecord
 from sha_claim.domain.schemes import belongs_to_scheme, canonical_scheme, scheme_family
+from sha_claim.domain.shr import (
+    ShrBundleReceipt,
+    ShrConsent,
+    ShrConsentRequest,
+    ShrConsentState,
+    ShrConsentTokenValue,
+    ShrVerification,
+    ShrVisitClosed,
+    ShrVisitType,
+)
 from sha_claim.errors import (
     AuthenticationError,
     BadRequestError,
@@ -141,7 +151,7 @@ from sha_claim.settings import Environment, SHASettings, Timeouts
 #: message insisting the right version was the wrong one. Deriving it from package metadata instead looked
 #: tempting and is worse: an editable checkout reports whatever it was last installed as (`0.1.0.dev0`
 #: here), so the guard would then reject every development environment.
-__version__ = "0.1.23"
+__version__ = "0.1.24"
 
 __all__ = [
     "AnaesthesiaType",
@@ -255,6 +265,14 @@ __all__ = [
     "ServerError",
     "ServiceType",
     "SessionFrequency",
+    "ShrBundleReceipt",
+    "ShrConsent",
+    "ShrConsentRequest",
+    "ShrConsentState",
+    "ShrConsentTokenValue",
+    "ShrVerification",
+    "ShrVisitClosed",
+    "ShrVisitType",
     "StoredFile",
     "SubBenefit",
     "Submission",

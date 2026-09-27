@@ -4,6 +4,36 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.24] — 2026-09-27
+
+### Added
+- **The Shared Health Record**, under a new `client.shr` namespace: request and verify consent, poll it,
+  resend the code, refresh or close the visit, read patient records, submit a FHIR bundle, and look up
+  resource security labels. Nine endpoints, taken from the published Postman collection.
+
+  The SHR answers a different question from the rest of this SDK — not *what may we bill* but *what has
+  been done for this person elsewhere* — and it is **separately consented**. A member who has agreed to the
+  visit has not agreed to their records being read, and DHA sends a second OTP for that. Anything built on
+  this has to account for the patient being asked twice, and for them having left before a clinician wants
+  the history.
+
+- `ShrConsentTokenValue`, a credential type. The token opens one patient's history across every facility
+  that has ever treated them, so `repr` and `str` redact it and it travels in `X-Consent-Token` rather than
+  a query string, where it would land in access logs and browser history.
+
+- `WireRequest.headers`, for per-request headers. Only the SHR needs them, and its token belongs on the one
+  request that carries it rather than on the client.
+
+### Notes
+- **FHIR is deliberately not modelled.** DHA passes the upstream search result through unchanged and the
+  callers already speak FHIR; a partial second implementation here would be a liability rather than a
+  convenience. Bundles go out and records come back as mappings.
+- `submit` returning `success` means DHA accepted the *envelope*. The contents are validated upstream and
+  asynchronously, so it is not confirmation that the resources were stored — pass `callback_url` to hear
+  the real outcome.
+- `otp_record` is reissued by a resend, and verifying with the original value then fails in a way that
+  looks like a wrong OTP. `resend_otp` returns the value to use.
+
 ## [0.1.23] — 2026-09-27
 
 ### Fixed

@@ -36,6 +36,14 @@ from sha_claim.adapters.wire.schemas.files import DownloadLinkWire, StoredFileWi
 from sha_claim.adapters.wire.schemas.preauth import DoctorConsentWire, PreauthorizationWire
 from sha_claim.adapters.wire.schemas.prescription import DispenseWire, PrescriptionWire
 from sha_claim.adapters.wire.schemas.registry import PatientContactWire, PatientRecordWire
+from sha_claim.adapters.wire.schemas.shr import (
+    ShrBundleReceiptWire,
+    ShrConsentStatusWire,
+    ShrConsentWire,
+    ShrRefreshWire,
+    ShrVerificationWire,
+    ShrVisitClosedWire,
+)
 from sha_claim.adapters.wire.transport import Transport, WireResponse
 from sha_claim.domain.attachments import Attachment
 from sha_claim.domain.benefits import (
@@ -80,6 +88,15 @@ from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, Preauthorization, PreauthRequest
 from sha_claim.domain.prescription import Dispense, DispenseRequest, Prescription, PrescriptionRequest
 from sha_claim.domain.registry import PatientContact, PatientRecord
+from sha_claim.domain.shr import (
+    ShrBundleReceipt,
+    ShrConsent,
+    ShrConsentRequest,
+    ShrConsentState,
+    ShrConsentTokenValue,
+    ShrVerification,
+    ShrVisitClosed,
+)
 from sha_claim.errors import UnexpectedResponseError
 
 M = TypeVar("M", bound=BaseModel)
@@ -468,3 +485,78 @@ class HttpFileGateway:
     async def download_link(self, file_id: FileId) -> DownloadLink:
         response = await self._transport.send(requests.download_link(file_id))
         return mappers.to_download_link(parse_as(DownloadLinkWire, response))
+
+
+class HttpShrGateway:
+    """The Shared Health Record, over HTTP.
+
+    Reads and writes carry the per-visit consent token; the consent calls that issue it do not.
+    """
+
+    def __init__(self, transport: Transport) -> None:
+        self._transport = transport
+
+    async def request_consent(self, request: ShrConsentRequest) -> ShrConsent:
+        response = await self._transport.send(requests.request_shr_consent(request))
+        return mappers.to_shr_consent(parse_as(ShrConsentWire, response))
+
+    async def verify_consent(self, consent_id: str, otp: str, otp_record: str) -> ShrVerification:
+        response = await self._transport.send(requests.verify_shr_consent(consent_id, otp, otp_record))
+        return mappers.to_shr_verification(parse_as(ShrVerificationWire, response))
+
+    async def consent_status(self, consent_id: str) -> ShrConsentState:
+        response = await self._transport.send(requests.shr_consent_status(consent_id))
+        return mappers.to_shr_consent_state(parse_as(ShrConsentStatusWire, response))
+
+    async def resend_otp(self, consent_id: str) -> ShrConsent:
+        response = await self._transport.send(requests.resend_shr_otp(consent_id))
+        return mappers.to_shr_consent(parse_as(ShrConsentWire, response))
+
+    async def refresh(self, visit_id: str) -> ShrConsentTokenValue:
+        response = await self._transport.send(requests.refresh_shr_consent(visit_id))
+        return ShrConsentTokenValue(parse_as(ShrRefreshWire, response).consent_token)
+
+    async def close_visit(self, visit_id: str) -> ShrVisitClosed:
+        response = await self._transport.send(requests.close_shr_visit(visit_id))
+        return mappers.to_shr_visit_closed(parse_as(ShrVisitClosedWire, response))
+
+    async def patient_records(
+        self,
+        token: ShrConsentTokenValue,
+        cr_id: str,
+        practitioner_id: str,
+        resources: Sequence[str] = (),
+        *,
+        resource_id: str = "",
+        page_token: str = "",
+        search: Mapping[str, str] | None = None,
+    ) -> Mapping[str, Any]:
+        """The FHIR search result, passed through exactly as DHA returned it.
+
+        Not modelled: DHA forwards the upstream result unchanged and the caller already speaks FHIR, so
+        parsing it here would only add a second, worse FHIR implementation to keep in step.
+        """
+        response = await self._transport.send(
+            requests.fetch_shr_records(
+                token,
+                cr_id,
+                practitioner_id,
+                resources,
+                resource_id=resource_id,
+                page_token=page_token,
+                search=search,
+            )
+        )
+        return response.json if isinstance(response.json, Mapping) else {}
+
+    async def submit_bundle(
+        self, token: ShrConsentTokenValue, bundle: Mapping[str, Any], *, callback_url: str = ""
+    ) -> ShrBundleReceipt:
+        response = await self._transport.send(
+            requests.submit_shr_bundle(token, bundle, callback_url=callback_url)
+        )
+        return mappers.to_shr_bundle_receipt(parse_as(ShrBundleReceiptWire, response))
+
+    async def resource_labels(self, resource_name: str = "", code: str = "") -> Mapping[str, Any]:
+        response = await self._transport.send(requests.shr_resource_labels(resource_name, code))
+        return response.json if isinstance(response.json, Mapping) else {}

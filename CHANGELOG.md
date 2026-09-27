@@ -4,6 +4,18 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.23] — 2026-09-27
+
+### Fixed
+- **`__version__` reported the wrong release.** 0.1.22 shipped with `pyproject.toml` at 0.1.22 and
+  `sha_claim.__version__` still reading `"0.1.21"`, so `pip show` and the package disagreed about what it
+  was. NaCare gates startup on that string, so a backend pinned correctly to 0.1.22 refused to boot with
+  *"sha-claim 0.1.21 is installed but NaCare needs >= 0.1.22"* — the right version insisting it was the
+  wrong one. `test_version_matches_pyproject` now fails the build before such a release can leave.
+
+  Deriving `__version__` from package metadata was tried and rejected: an editable checkout reports
+  whatever it was last installed as, which would make the same guard reject every development environment.
+
 ## [0.1.22] — 2026-09-26
 
 ### Added

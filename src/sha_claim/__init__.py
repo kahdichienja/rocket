@@ -134,7 +134,14 @@ from sha_claim.facility import (
 from sha_claim.session import ClaimSession
 from sha_claim.settings import Environment, SHASettings, Timeouts
 
-__version__ = "0.1.21"
+#: Must match `version` in pyproject.toml — `test_version_matches_pyproject` fails the build if it does not.
+#:
+#: 0.1.22 shipped with this still reading "0.1.21", so `pip show` and `sha_claim.__version__` disagreed.
+#: NaCare gates startup on this string, and the mismatch took a correctly-pinned backend offline with a
+#: message insisting the right version was the wrong one. Deriving it from package metadata instead looked
+#: tempting and is worse: an editable checkout reports whatever it was last installed as (`0.1.0.dev0`
+#: here), so the guard would then reject every development environment.
+__version__ = "0.1.23"
 
 __all__ = [
     "AnaesthesiaType",

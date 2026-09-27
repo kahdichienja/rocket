@@ -547,6 +547,7 @@ class HttpShrGateway:
                 search=search,
             )
         )
+        raise_for_status(response)
         body = response.json()
         return body if isinstance(body, Mapping) else {}
 
@@ -560,6 +561,7 @@ class HttpShrGateway:
 
     async def resource_labels(self, resource_name: str = "", code: str = "") -> Mapping[str, Any]:
         response = await self._transport.send(requests.shr_resource_labels(resource_name, code))
+        raise_for_status(response)
         body = response.json()
         return body if isinstance(body, Mapping) else {}
 
@@ -579,6 +581,13 @@ class HttpHealthWorkerGateway:
         response = await self._transport.send(
             requests.find_health_worker(identification_number, identification_type, regulator)
         )
+        # "No practitioner membership" is a 400, but it is an *answer* — the registry holds nobody with
+        # that number — and a desk needs to be told that rather than shown a transport failure.
+        if response.status >= 400:
+            body_text = response.body.decode(errors="replace")
+            if "no practitioner membership" in body_text.lower():
+                return None
+        raise_for_status(response)
         # DHA answers with a bare object for some lookups and a paged list for others.
         body: Any = response.json()
         if isinstance(body, Mapping):

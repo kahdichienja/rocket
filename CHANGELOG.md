@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.27] — 2026-09-27
+
+### Fixed
+- **Two gateways were reading DHA's errors as data.** `parse_as` enforces the response status; the SHR
+  record/label reads and the health-worker lookup called `response.json()` directly and skipped it. A 400
+  body was then handed to `model_validate`, which accepts it because the wire models allow extra fields —
+  so a failed registry lookup came back as a `HealthWorker` with every field blank, and a desk validating a
+  registration number would have seen an empty name and read it as *found*. All three now raise.
+
+### Changed
+- **`find_health_worker` requires a `regulator`, and sends it lower-case.** Established on UAT: omitting it
+  is refused with `invalid practitioner regulator:  valid choices are [kmpdc coc ppb nck]`, and DHA rejects
+  the upper-case spelling every other part of this API uses. Note `ppb` — the Pharmacy and Poisons Board —
+  which `RegulationBody` does not carry, because a claim never names one.
+- **"No practitioner membership" is reported as not-found, not as a failure.** DHA spells it as a 400, but
+  the registry holding nobody with that number is an answer a desk needs; `find` returns `None`.
+
 ## [0.1.26] — 2026-09-27
 
 ### Added

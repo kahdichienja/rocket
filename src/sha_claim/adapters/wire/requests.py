@@ -838,7 +838,7 @@ def shr_resource_labels(resource_name: str = "", code: str = "") -> WireRequest:
 
 def find_health_worker(
     identification_number: str,
-    identification_type: IdentificationType = IdentificationType.NATIONAL_ID,
+    identification_type: IdentificationType = IdentificationType.REGISTRATION_NUMBER,
     regulator: str = "",
 ) -> WireRequest:
     """`GET /api/v1/professionals` — the Health Worker Registry.
@@ -846,11 +846,16 @@ def find_health_worker(
     Two uses. It resolves a regulator's registration number to the registry id the Shared Health Record
     wants as `practitioner_id`, and it checks a registration number belongs to somebody real before a
     pre-auth is filed against it — which is otherwise found out by a rejection days later.
+
+    **`regulator` is required and lower-case.** Omitting it is refused outright (UAT, 2026-09-27):
+    `invalid practitioner regulator:  valid choices are [kmpdc coc ppb nck]`. Note `ppb` — the Pharmacy and
+    Poisons Board — which `RegulationBody` does not carry because a claim never names one.
     """
+    if not regulator.strip():
+        raise ValueError("the health worker registry requires a regulator: kmpdc, coc, ppb or nck")
     params = {
         "identification_number": identification_number,
         "identification_type": identification_type.value,
+        "regulator": regulator.strip().lower(),
     }
-    if regulator:
-        params["regulator"] = regulator
     return WireRequest("GET", "/professionals", params=params)

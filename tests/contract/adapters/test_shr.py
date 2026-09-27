@@ -187,3 +187,91 @@ class TestTheResponseIsActuallyRead:
                 return WireResponse(status=200, headers={}, body=b"[]")
 
         assert await HttpShrGateway(_Transport()).patient_records(TOKEN, "CR-1", "HWR-9") == {}
+
+
+class TestTheHealthWorkerRegistry:
+    """Established on UAT, 2026-09-27, because none of it is documented."""
+
+    def test_the_regulator_is_required(self) -> None:
+        """Omitting it is refused outright: `invalid practitioner regulator: valid choices are
+        [kmpdc coc ppb nck]`. Better to say so here than to spend a round trip finding out."""
+        import pytest
+
+        with pytest.raises(ValueError, match="regulator"):
+            requests.find_health_worker("A12345")
+
+    def test_the_regulator_is_sent_lower_case(self) -> None:
+        """DHA lists its choices in lower case and rejects `KMPDC`, which is how every other part of this
+        API spells it."""
+        wire = requests.find_health_worker("A12345", regulator="KMPDC")
+        assert wire.params["regulator"] == "kmpdc"
+
+    def test_it_looks_up_by_registration_number_by_default(self) -> None:
+        wire = requests.find_health_worker("A12345", regulator="kmpdc")
+        assert wire.params["identification_number"] == "A12345"
+        assert wire.params["identification_type"] == "registration_number"
+
+
+class TestErrorsAreNotMistakenForData:
+    """`parse_as` enforces the status; these two gateways bypassed it and had to be corrected.
+
+    The failure was quiet and bad: a 400 body was handed to `model_validate`, which accepted it because the
+    wire models allow extra fields, and out came a `HealthWorker` with every field empty. A desk validating
+    a registration number would have been shown a blank name and read it as "found".
+    """
+
+    async def test_a_registry_error_is_not_returned_as_an_empty_worker(self) -> None:
+        from sha_claim.adapters.wire.http_gateways import HttpHealthWorkerGateway
+        from sha_claim.adapters.wire.transport import WireResponse
+        from sha_claim.domain.enums import IdentificationType
+
+        class _Transport:
+            async def send(self, request: object) -> WireResponse:
+                return WireResponse(
+                    status=400,
+                    headers={},
+                    body=b'{"error":"Bad Request","message":"failed to fetch practitioner: something else"}',
+                )
+
+        import pytest
+
+        from sha_claim.errors import SHAClaimError
+
+        with pytest.raises(SHAClaimError):
+            await HttpHealthWorkerGateway(_Transport()).find(
+                "A12345", IdentificationType.REGISTRATION_NUMBER, "kmpdc"
+            )
+
+    async def test_no_membership_is_a_not_found_rather_than_a_failure(self) -> None:
+        """The registry holding nobody with that number is an answer; DHA just spells it as a 400."""
+        from sha_claim.adapters.wire.http_gateways import HttpHealthWorkerGateway
+        from sha_claim.adapters.wire.transport import WireResponse
+        from sha_claim.domain.enums import IdentificationType
+
+        class _Transport:
+            async def send(self, request: object) -> WireResponse:
+                return WireResponse(
+                    status=400,
+                    headers={},
+                    body=b'{"message":"failed to fetch practitioner: no practitioner membership returned from health worker registry"}',
+                )
+
+        got = await HttpHealthWorkerGateway(_Transport()).find(
+            "A12345", IdentificationType.REGISTRATION_NUMBER, "kmpdc"
+        )
+        assert got is None
+
+    async def test_an_shr_read_failure_raises_instead_of_returning_the_error_body(self) -> None:
+        from sha_claim.adapters.wire.http_gateways import HttpShrGateway
+        from sha_claim.adapters.wire.transport import WireResponse
+
+        class _Transport:
+            async def send(self, request: object) -> WireResponse:
+                return WireResponse(status=403, headers={}, body=b'{"error":"Forbidden"}')
+
+        import pytest
+
+        from sha_claim.errors import SHAClaimError
+
+        with pytest.raises(SHAClaimError):
+            await HttpShrGateway(_Transport()).patient_records(TOKEN, "CR-1", "HWR-9")

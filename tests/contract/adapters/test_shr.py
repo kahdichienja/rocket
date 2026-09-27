@@ -279,3 +279,38 @@ class TestErrorsAreNotMistakenForData:
 
         with pytest.raises(SHAClaimError):
             await HttpShrGateway(_Transport()).patient_records(TOKEN, "CR-1", "HWR-9")
+
+
+class TestAttachmentDocumentTypes:
+    """A document type may arrive as the enum or as a plain string, and both are legitimate.
+
+    `DocumentType` is the **claim** attachment vocabulary. A pre-authorisation has its own, shorter list —
+    `LOU`, `CLINICAL_DOCUMENTATION`, `PROFORMA_INVOICE` — which DHA publishes only in the Postman
+    collection and which that enum does not carry.
+
+    The wire builders called `.value` unconditionally, so a caller passing the string it read off a form
+    got `AttributeError: 'str' object has no attribute 'value'` — a 500 from NaCare's own backend, on
+    every pre-auth submitted with a document attached.
+    """
+
+    def test_an_enum_type_reaches_the_wire(self) -> None:
+        from sha_claim.domain.attachments import Attachment
+        from sha_claim.domain.codes import DocumentType
+
+        assert Attachment("a.pdf", b"x", DocumentType.LAB_ORDER).wire_document_type == "LAB_ORDER"
+
+    def test_a_string_type_reaches_the_wire_unchanged(self) -> None:
+        from sha_claim.domain.attachments import Attachment
+
+        assert (
+            Attachment("a.pdf", b"x", "CLINICAL_DOCUMENTATION").wire_document_type == "CLINICAL_DOCUMENTATION"
+        )
+
+    def test_a_blank_type_is_refused_at_construction(self) -> None:
+        """SHA rejects an attachment with no type, so the failure belongs here rather than on the wire."""
+        import pytest
+
+        from sha_claim.domain.attachments import Attachment
+
+        with pytest.raises(ValueError, match="document type"):
+            Attachment("a.pdf", b"x", "   ")

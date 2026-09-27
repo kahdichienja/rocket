@@ -4,6 +4,25 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.30] — 2026-09-27
+
+### Fixed
+- **Every pre-auth with an attached document raised a 500 inside the caller's own backend.** The wire
+  builders read `attachment.document_type.value` unconditionally, so a caller passing the string it read
+  off a form got `AttributeError: 'str' object has no attribute 'value'`.
+
+  Both forms are legitimate. `DocumentType` is the vocabulary for **claim** attachments; a
+  pre-authorisation has its own, shorter list — `LOU`, `CLINICAL_DOCUMENTATION`, `PROFORMA_INVOICE`,
+  `RADIOLOGY_REQUEST` — which DHA publishes only in the Postman collection and which that enum does not
+  carry. Forcing a pre-auth attachment through `DocumentType` would reject types SHA accepts.
+
+  `Attachment.document_type` now takes `DocumentType | str`, and `Attachment.wire_document_type`
+  normalises it for the four places that build a payload.
+
+### Added
+- `Attachment` refuses a blank document type at construction. SHA rejects an attachment sent without one,
+  so the failure belongs where the mistake is rather than on the wire.
+
 ## [0.1.29] — 2026-09-27
 
 ### Fixed

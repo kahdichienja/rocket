@@ -158,7 +158,7 @@ class FakeGateway:
     ) -> ClaimAttachment:
         self._rec("attach", token, attachment.filename, intervention)
         return ClaimAttachment(
-            AttachmentId("A1"), attachment.filename, attachment.document_type.value, intervention
+            AttachmentId("A1"), attachment.filename, attachment.wire_document_type, intervention
         )
 
     async def remove_attachment(

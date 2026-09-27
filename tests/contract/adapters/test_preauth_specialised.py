@@ -228,3 +228,18 @@ class TestImpossibleCourses:
     def test_a_course_of_no_sessions_is_refused(self, sessions: int) -> None:
         with pytest.raises(ValueError, match="number_of_sessions_required"):
             RenalDetails(sessions, Money.kes("1"), SessionFrequency.ONCE_A_WEEK, "x", WHEN)
+
+
+class TestAStringDocumentType:
+    """The exact call that 500'd: a pre-auth submitted with one attached document.
+
+    `DocumentType` is the *claim* attachment vocabulary; a pre-auth has its own, which that enum does not
+    carry. The wire builder called `.value` unconditionally, so the string a form supplies raised
+    `AttributeError` inside NaCare's own backend.
+    """
+
+    def test_a_preauth_with_a_string_typed_attachment_reaches_the_wire(self) -> None:
+        wire = build(attachments=(Attachment("report.pdf", b"x", "MEDICAL_REPORT"),))
+        meta = json.loads(wire.form["attachments"])
+        assert meta[0]["document_type"] == "MEDICAL_REPORT"
+        assert meta[0]["file_field_name"] in wire.files

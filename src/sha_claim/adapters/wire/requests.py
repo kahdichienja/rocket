@@ -234,7 +234,7 @@ def add_line(token: ConsentToken, line: NewClaimLine) -> WireRequest:
             meta.append(
                 {
                     "document_title": item.document_title,
-                    "document_type": item.attachment.document_type.value,
+                    "document_type": item.attachment.wire_document_type,
                     "file_field_name": field_name,
                 }
             )
@@ -290,7 +290,7 @@ def add_attachment(
         "/claims/attachments",
         form={
             "consent_token": token.value,
-            "document_type": attachment.document_type.value,
+            "document_type": attachment.wire_document_type,
             "intervention_code": intervention.value,
         },
         files={"file_blob": (attachment.filename, attachment.content, attachment.content_type)},
@@ -376,7 +376,7 @@ def create_preauth(token: ConsentToken, request: PreauthRequest) -> WireRequest:
         attachment_meta.append(
             {
                 "document_title": attachment.filename,
-                "document_type": attachment.document_type.value,
+                "document_type": attachment.wire_document_type,
                 "file_field_name": part,
             }
         )
@@ -672,7 +672,7 @@ def open_emt_claim(token: ConsentToken, claim: EmtClaim) -> WireRequest:
         part = f"attachment_{index}"
         files[part] = (attachment.filename, attachment.content, attachment.content_type)
         meta.append(
-            {"field": part, "document_type": attachment.document_type.value, "title": attachment.filename}
+            {"field": part, "document_type": attachment.wire_document_type, "title": attachment.filename}
         )
     form = {
         "consent_token": token.value,

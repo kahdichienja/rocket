@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
-## [0.1.25] — 2026-09-27
+## [0.1.26] — 2026-09-27
 
 ### Added
 - **The Health Worker Registry** — `client.health_workers.find`, over `GET /api/v1/professionals`. Two
@@ -19,6 +19,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   method against `Mapping`, is always false, and so returned `{}` for every patient. Nothing would have
   looked broken: the panel would simply have said "no records", for everyone, for ever. Caught by mypy's
   `truthy-function` check before it shipped, and now pinned by a test that asserts the bundle survives.
+
+### Notes
+- There is no 0.1.25. Its tag was cut with an unsorted `__all__`, the release gate refused it, and nothing
+  reached PyPI — so its contents ship here instead of leaving a version number that resolves to nothing.
 
 ## [0.1.24] — 2026-09-27
 

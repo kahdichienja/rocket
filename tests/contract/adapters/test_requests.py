@@ -59,3 +59,22 @@ def test_open_visit_accepts_each_proof_and_refuses_anything_else() -> None:
     assert requests.open_visit(*args, MatchId("M-1")).json["match_id"] == "M-1"
     with pytest.raises(RequestValidationError, match="proof"):
         requests.open_visit(*args, object())  # type: ignore[arg-type]
+
+
+def test_payer_status_sends_the_claim_number_alone() -> None:
+    """The `guid` parameter must stay off unless a caller explicitly supplies one.
+
+    `GET /claims/preview/payer` filters on the **payer claim's** guid, not the provider-side guid the
+    rest of the API uses. They are different values, and the payer's appears nowhere except this
+    endpoint's own response. Sending ours matches no row — and the endpoint returns
+    `200 {"results": []}`, not an error.
+
+    That is why this is pinned rather than left to review: an empty list is exactly what a claim awaiting
+    adjudication looks like, so the bug reports *nothing has happened yet*, forever, on every claim, and
+    never raises. Verified on UAT against a live submitted claim — `provider_claim_no` alone returned it
+    with `workflowState: DRAFT_PROVIDER`; adding the guid returned nothing. DHA's own Postman request
+    carries the `guid` parameter **disabled**.
+    """
+    r = requests.payer_status(None, "HMP-TEST/00253/2026")
+    assert r.params == {"provider_claim_no": "HMP-TEST/00253/2026"}
+    assert "guid" not in r.params

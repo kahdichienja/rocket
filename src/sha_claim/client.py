@@ -15,6 +15,7 @@ from sha_claim.adapters.wire.http_gateways import (
     HttpConsentGateway,
     HttpEligibilityGateway,
     HttpEmergencyGateway,
+    HttpFacilityRegistryGateway,
     HttpFileGateway,
     HttpHealthWorkerGateway,
     HttpPreauthGateway,
@@ -31,11 +32,13 @@ from sha_claim.domain.benefits import (
     SubBenefit,
     UtilizationBalance,
 )
+from sha_claim.domain.claim import PayerClaimRecord
 from sha_claim.domain.codes import InterventionCode
 from sha_claim.domain.consent import Authorization, BiometricContext, ConsentProof, Otp
 from sha_claim.domain.eligibility import Eligibility
 from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol
 from sha_claim.domain.enums import BroughtBy, IdentificationType, ModeOfArrival, ServiceType
+from sha_claim.domain.facility import FacilityIdentifierType, FacilityRecord
 from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import ConsentToken, FacilityCode, FileId, PatientId
 from sha_claim.domain.identity import BearerToken, Identity
@@ -48,6 +51,8 @@ from sha_claim.domain.shr import (
     ShrConsentRequest,
     ShrConsentState,
     ShrConsentTokenValue,
+    ShrReferralQuery,
+    ShrSecurityLabel,
     ShrVerification,
     ShrVisitClosed,
     ShrVisitType,
@@ -312,6 +317,21 @@ class ClaimsResource:
         """Re-attach to an existing virtual claim (e.g. from a token persisted by NaCare). No network call."""
         return ClaimSession(self._gateways, ConsentToken.of(consent_token))
 
+    async def payer_status(self, provider_claim_no: str) -> tuple[PayerClaimRecord, ...]:
+        """`GET /claims/preview/payer` — how the payer sees a submitted claim, **without a consent token**.
+
+        Here rather than only on the session because asking how a claim is going is a read about a claim
+        that is already finished, often days later. A consent token authorises *acting on a visit*; it is
+        short-lived by design, so requiring one to check a status makes the answer unobtainable exactly
+        when it is wanted. This takes the claim number and nothing else.
+
+        DHA has no webhook and no bulk read, so this one call is how a payment, a rejection or a request
+        for correction is ever discovered.
+        """
+        if not provider_claim_no.strip():
+            raise RequestValidationError([Violation("provider_claim_no", "cannot be empty")])
+        return await self._gateways.claims.payer_status(None, provider_claim_no)
+
 
 class RegistryResource:
     """The Client Registry: turn an identity document into a CR number, and check the member is reachable.
@@ -498,11 +518,106 @@ class ShrResource:
         """
         return await self._gateway.submit_bundle(_shr_token(token), bundle, callback_url=callback_url)
 
+    async def referrals(
+        self,
+        *,
+        performer: str = "",
+        requester: str = "",
+        status: str = "",
+        count: int = 0,
+        page_token: str = "",
+    ) -> Mapping[str, Any]:
+        """Referrals as a FHIR `searchset`, passed through exactly as DHA returned it.
+
+        **This one takes no consent token.** Every other read on this resource asks what is in a patient's
+        record and needs their say-so; this asks which referrals point at an *organisation*, which is a
+        question about a facility's own workload. That distinction is what makes a referral inbox possible —
+        a receiving desk can see a patient is coming before the patient, and their OTP, has arrived.
+
+        Direction is which argument you pass, and mixing them up silently shows the wrong list:
+
+            performer=<our FR code>   → referrals sent **to** us   (inbox)
+            requester=<our FR code>   → referrals we **raised**    (outbox)
+
+        One of the two is required. Page by feeding the `page_token` from the bundle's `next` link back in.
+        """
+        return await self._gateway.query_referrals(
+            ShrReferralQuery(
+                performer_fr_code=performer,
+                requester_fr_code=requester,
+                status=status,
+                count=count,
+                page_token=page_token,
+            )
+        )
+
+    async def observations(
+        self,
+        token: ShrConsentTokenValue | str,
+        subject: str,
+        practitioner_uid: str,
+        *,
+        page_token: str = "",
+    ) -> Mapping[str, Any]:
+        """A patient's observations, as the FHIR `searchset` DHA returned.
+
+        `practitioner_uid` travels in the `X-PUID` **header** on this endpoint, where `records()` sends the
+        same fact as a `practitioner_id` query parameter. DHA rejects it in the wrong place, so the two are
+        not interchangeable despite being the same identifier.
+
+        `records(resources=["Observation"])` answers the same question; this exists because DHA publishes it
+        and because paging one resource type is cheaper than paging the whole record.
+        """
+        return await self._gateway.query_observations(
+            _shr_token(token), subject, practitioner_uid, page_token=page_token
+        )
+
+    async def security_labels(self) -> tuple[ShrSecurityLabel, ...]:
+        """The catalogue of confidentiality and sensitivity labels.
+
+        Fetch once and keep: it is static reference data, and it is what turns a resource's `meta.security`
+        from `["PSY"]` into something a clinician can act on.
+        """
+        return await self._gateway.security_labels()
+
     async def resource_labels(self, resource_name: str = "", code: str = "") -> Mapping[str, Any]:
         """What a consent grants access to. DHA requires at least one of the two filters."""
         if not resource_name and not code:
             raise ValueError("resource_labels needs a resource_name or a code")
         return await self._gateway.resource_labels(resource_name, code)
+
+
+class FacilitiesResource:
+    """The Facility Registry — naming a facility that is **not** us.
+
+    Everywhere else a facility is implied by the credential or by `activate_facility`. A referral has to
+    name its destination, and the SHR addresses referrals by FR code (`Organization/FID-17-116073-1`), so a
+    desk that only knows a hospital's name needs this to get a code.
+    """
+
+    def __init__(self, gateway: HttpFacilityRegistryGateway) -> None:
+        self._gateway = gateway
+
+    async def search(
+        self,
+        *,
+        name: str = "",
+        identifier: str = "",
+        identifier_type: FacilityIdentifierType = FacilityIdentifierType.FR_CODE,
+    ) -> tuple[FacilityRecord, ...]:
+        """Facilities matching a name or an identifier. Empty means the registry holds no match.
+
+        A returned facility is not necessarily one a patient can be sent to — check
+        `FacilityRecord.is_referable`, which is operational **and** SHA-contracted. Both failures are worth
+        showing rather than hiding: a suspended facility cannot treat the patient, an uncontracted one will
+        bill them privately, and some referrals are clinically necessary regardless.
+        """
+        return await self._gateway.search(identifier, identifier_type, name)
+
+    async def find_by_fr_code(self, fr_code: str) -> FacilityRecord | None:
+        """One facility by its FR code, or `None` when the registry has no such code — an answer, not an error."""
+        found = await self._gateway.search(fr_code, FacilityIdentifierType.FR_CODE, "")
+        return found[0] if found else None
 
 
 def _shr_token(token: ShrConsentTokenValue | str) -> ShrConsentTokenValue:
@@ -565,6 +680,7 @@ class AsyncSHAClient:
         self.emergency = EmergencyResource(gateways)
         self.files = FilesResource(HttpFileGateway(self._transport))
         self.shr = ShrResource(HttpShrGateway(self._transport))
+        self.facilities = FacilitiesResource(HttpFacilityRegistryGateway(self._transport))
         self.health_workers = HealthWorkersResource(HttpHealthWorkerGateway(self._transport))
 
     @classmethod

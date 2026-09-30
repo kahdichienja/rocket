@@ -2,7 +2,59 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
-## [Unreleased]
+## [0.1.31] — 2026-09-30
+
+### Added
+- **The Shared Health Record's referral query — `GET /shr/ServiceRequest`.** `sha.shr.referrals(...)`,
+  which is the first SHR read in this SDK that carries **no consent token**. DHA scopes it by organisation
+  rather than by patient, and that is what makes a referral *inbox* possible: a receiving facility can see
+  that a patient is coming before the patient, and their OTP, has arrived. Direction is which argument you
+  pass — `performer=` for referrals sent to us, `requester=` for ones we raised — and the FHIR
+  `:Organization` reference-type modifier lives in `ShrReferralQuery.as_params` so no caller has to
+  remember the colon. One of the two is required; a query with neither would search every referral DHA
+  holds.
+
+  Raising a referral still goes through `POST /shr/bundles` as a `ServiceRequest` entry, which **does**
+  need consent. The two directions therefore have asymmetric consent requirements, which is the main thing
+  to understand about the endpoint.
+
+- **`GET /shr/Observation`** — `sha.shr.observations(...)`. Notable only for its headers: it needs
+  `X-Consent-Token` **and** `X-PUID`, and `X-PUID` is required here and nowhere else in this SDK. Every
+  other endpoint sends the reading clinician as a `practitioner_id` *query parameter*. Same fact, different
+  place, and DHA rejects it in the wrong one. Largely redundant with
+  `records(resources=["Observation"])`; added because DHA publishes it and because paging one resource
+  type is cheaper than paging the whole record.
+
+- **`GET /shr/security-labels`** — `sha.shr.security_labels()`, the catalogue behind a resource's
+  `meta.security`. Modelled rather than passed through, unlike the FHIR searches, because it is reference
+  data a screen has to reason about: which codes mean *restricted*, which are sensitivity rather than
+  confidentiality. `ShrSecurityLabel.kind` is **derived** from the HL7 system URI rather than trusted from
+  DHA's free-text `category`, with the code list as fallback, and an unrecognised code reports as `UNKNOWN`
+  rather than being filed under a guess — mistaking a sensitivity code for a confidentiality one would
+  misreport how guarded a record is. `display` falls back to the bare code, never to an invention: `SUD`
+  and `GDIS` mean nothing to a desk, but a code can at least be looked up.
+
+- **The Facility Registry — `GET /facilities/search`.** New `sha.facilities` resource, with `search(...)`
+  and `find_by_fr_code(...)`. Everywhere else in this SDK a facility is *implied* by the credential or by
+  `activate_facility`; this is for naming a facility that is **not** us, which a referral has to do because
+  the SHR addresses referrals by FR code (`Organization/FID-17-116073-1`).
+
+  Two traps, both silent. The query key is **`identifier-type`**, hyphenated, unlike every snake_case
+  parameter elsewhere — DHA ignores the snake_case spelling and applies its own default. And a lookup by
+  identifier answers with a bare object while a name search answers with a list, so validating the envelope
+  as a record yields one facility with no FR code, which is a picker entry a referral cannot address.
+
+  `FacilityRecord.is_referable` is the reading that matters: operational **and** SHA-contracted. A code is
+  not the same as a facility that can receive the patient — the registry answers for hospitals that are
+  suspended and for hospitals that never contracted with SHA. `is_operational` is matched negatively, so an
+  unrecognised status reads as operational: wrongly hiding a hospital that could have taken the patient is
+  the worse failure.
+
+### Notes
+- `docs/api/spec/eclaims.json` predates the SHR and carries none of these paths, so
+  `test_spec_drift.py` does not cover them — the position the existing SHR requests were already in. The
+  contract is pinned by `tests/contract/adapters/test_shr.py` and the new `test_facility_registry.py`
+  against the published Postman collection and the DHA docs.
 
 ## [0.1.30] — 2026-09-27
 

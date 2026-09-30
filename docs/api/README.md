@@ -19,6 +19,7 @@ Each endpoint includes the portal's example request/response JSON (`spec/example
 | eClaims and Preauth APIs | ePrescriptions | 4 | [eclaims--eprescriptions.md](eclaims--eprescriptions.md) |
 | eClaims and Preauth APIs | Claim Dispatch | 5 | [eclaims--claim-dispatch.md](eclaims--claim-dispatch.md) |
 | eClaims and Preauth APIs | Emergency | 6 | [eclaims--emergency.md](eclaims--emergency.md) |
+| Shared Health Record + Facility Registry | Referrals, Observations, Security Labels, Facility search | 4 | [shr--referrals.md](shr--referrals.md) |
 
 ## Servers
 

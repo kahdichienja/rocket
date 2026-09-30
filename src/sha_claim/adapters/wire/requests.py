@@ -15,6 +15,7 @@ from sha_claim.domain.codes import Icd11Code, InterventionCode
 from sha_claim.domain.consent import BiometricContext, BiometricGuid, ConsentProof, MatchId, Otp
 from sha_claim.domain.emergency import EmergencyCase, EmtClaim, ProtocolLine
 from sha_claim.domain.enums import CancelReason, IdentificationType, ServiceType
+from sha_claim.domain.facility import FacilityIdentifierType
 from sha_claim.domain.identifiers import (
     AttachmentId,
     ClaimGuid,
@@ -27,7 +28,7 @@ from sha_claim.domain.identifiers import (
 from sha_claim.domain.practitioner import PractitionerRef
 from sha_claim.domain.preauth import DoctorConsentRequest, PreauthRequest
 from sha_claim.domain.prescription import DispenseRequest, MedicationOrder, PrescriptionRequest
-from sha_claim.domain.shr import ShrConsentRequest, ShrConsentTokenValue
+from sha_claim.domain.shr import ShrConsentRequest, ShrConsentTokenValue, ShrReferralQuery
 from sha_claim.errors import RequestValidationError, Violation
 
 
@@ -339,10 +340,26 @@ def close(token: ConsentToken, reason: CancelReason, text: str) -> WireRequest:
     )
 
 
-def payer_status(claim: ClaimGuid, provider_claim_no: str) -> WireRequest:
-    return WireRequest(
-        "GET", "/claims/preview/payer", params={"guid": claim.value, "provider_claim_no": provider_claim_no}
-    )
+def payer_status(claim: ClaimGuid | None, provider_claim_no: str) -> WireRequest:
+    """`GET /claims/preview/payer`. **The guid is omitted by default, and that is load-bearing.**
+
+    The `guid` this endpoint filters on is the *payer claim's* guid, which is a different value from the
+    provider-side claim guid every other endpoint uses — and the only place it appears is in this
+    endpoint's own response. Sending the provider's guid matches nothing, and the endpoint answers
+    `200 {"results": []}` rather than an error. Verified on UAT against a live submitted claim:
+
+        provider_claim_no only          → 1 result, workflowState DRAFT_PROVIDER
+        guid + provider_claim_no        → 0 results
+        guid only                       → 0 results
+
+    An empty list is indistinguishable from "the payer has not opened a row yet", so a poller built on
+    the guid reports *awaiting adjudication* forever and never fails. DHA's own Postman request has the
+    `guid` parameter present but **disabled**, which now reads as a warning rather than an accident.
+    """
+    params = {"provider_claim_no": provider_claim_no}
+    if claim is not None:
+        params["guid"] = claim.value
+    return WireRequest("GET", "/claims/preview/payer", params=params)
 
 
 def _diagnosis_body(token: ConsentToken, icd: Icd11Code, intervention: InterventionCode) -> dict[str, str]:
@@ -834,6 +851,83 @@ def shr_resource_labels(resource_name: str = "", code: str = "") -> WireRequest:
     if code:
         params["code"] = code
     return WireRequest("GET", "/shr/resource-labels", params=params)
+
+
+def query_shr_referrals(query: ShrReferralQuery) -> WireRequest:
+    """`GET /shr/ServiceRequest` — referrals addressed to, or raised by, an organisation.
+
+    **No `X-Consent-Token`, and that is not an omission.** DHA scopes this query by organisation rather
+    than by patient: it answers "which referrals point at this facility", which is a question about our own
+    workload, not a read of somebody's record. Sending a consent token here would be meaningless, and — more
+    to the point — *requiring* one would make an inbox impossible, since a referral has to be visible before
+    the patient it concerns has arrived to consent to anything.
+
+    The parameter names carry FHIR's `:Organization` reference-type modifier; `ShrReferralQuery.as_params`
+    owns that spelling.
+    """
+    return WireRequest("GET", "/shr/ServiceRequest", params=query.as_params())
+
+
+def query_shr_observations(
+    token: ShrConsentTokenValue,
+    subject: str,
+    practitioner_uid: str,
+    *,
+    page_token: str = "",
+) -> WireRequest:
+    """`GET /shr/Observation` — a patient's observations as a FHIR `searchset`.
+
+    Two headers, not one: `X-Consent-Token` as everywhere else in the SHR, **and** `X-PUID`, the
+    practitioner's unique identifier. `X-PUID` is required on this endpoint and on no other in this SDK —
+    elsewhere the reading clinician travels as the `practitioner_id` *query* parameter (see
+    `fetch_shr_records`). Same fact, different place, and DHA rejects the request if it is in the wrong one.
+
+    Largely covered by `/shr/patient-records?resources=Observation`; it exists because DHA publishes it and
+    because paging a single resource type is cheaper than paging the lot.
+    """
+    params: dict[str, str] = {"subject": subject}
+    if page_token:
+        params["page_token"] = page_token
+    return WireRequest(
+        "GET",
+        "/shr/Observation",
+        params=params,
+        headers={"X-Consent-Token": token.value, "X-PUID": practitioner_uid},
+    )
+
+
+def shr_security_labels() -> WireRequest:
+    """`GET /shr/security-labels` — the whole catalogue of confidentiality and sensitivity labels.
+
+    Takes no parameters and changes rarely, so a caller is expected to fetch it once and keep it. Distinct
+    from `shr_resource_labels`, which answers *which labels apply to a given resource type*; this answers
+    *what the codes mean*.
+    """
+    return WireRequest("GET", "/shr/security-labels")
+
+
+def search_facilities(
+    identifier: str = "",
+    identifier_type: FacilityIdentifierType = FacilityIdentifierType.FR_CODE,
+    name: str = "",
+) -> WireRequest:
+    """`GET /facilities/search` — the Facility Registry, by identifier or by name.
+
+    The query key is **`identifier-type`**, hyphenated, unlike every snake_case parameter elsewhere in this
+    API. `identifier_type` is only sent alongside an `identifier`; on a name search DHA has nothing to apply
+    it to.
+    """
+    params: dict[str, str] = {}
+    if identifier:
+        params["identifier"] = identifier
+        params["identifier-type"] = identifier_type.value
+    if name:
+        params["name"] = name
+    if not params:
+        raise RequestValidationError(
+            [Violation("facility", "a facility search needs an identifier or a name")]
+        )
+    return WireRequest("GET", "/facilities/search", params=params)
 
 
 def find_health_worker(

@@ -260,13 +260,17 @@ class ClaimSession:
         return self.claim
 
     async def payer_status(self, provider_claim_no: str) -> tuple[PayerClaimRecord, ...]:
-        """`GET /claims/preview/payer` — how the payer sees the submitted claim."""
-        if self.claim is None or self.claim.guid is None:
-            await self.preview()
-        assert self.claim is not None
-        if self.claim.guid is None:
-            raise RequestValidationError([Violation("claim", "server has not assigned a claim GUID yet")])
-        return await self._gateway.payer_status(self.claim.guid, provider_claim_no)
+        """`GET /claims/preview/payer` — how the payer sees the submitted claim.
+
+        Keyed on `provider_claim_no` alone. It used to `preview()` first so it could also send the claim
+        guid, which was wrong twice over: the payer filters on its *own* guid, so ours matched nothing and
+        the endpoint answered `200 {"results": []}` — a silent empty, indistinguishable from "not
+        adjudicated yet" — and the preview call made a pure read depend on a consent token that has long
+        expired by the time anyone asks how a claim is going.
+        """
+        if not provider_claim_no.strip():
+            raise RequestValidationError([Violation("provider_claim_no", "cannot be empty")])
+        return await self._gateway.payer_status(None, provider_claim_no)
 
     # ── inpatient discharge & consent fallbacks ──
 

@@ -32,6 +32,7 @@ from sha_claim.adapters.wire.schemas.claim import (
 from sha_claim.adapters.wire.schemas.common import Page
 from sha_claim.adapters.wire.schemas.eligibility import EligibilityWire
 from sha_claim.adapters.wire.schemas.emergency import EmergencyProtocolWire
+from sha_claim.adapters.wire.schemas.facility import FacilityRecordWire, FacilitySearchWire
 from sha_claim.adapters.wire.schemas.files import DownloadLinkWire, StoredFileWire
 from sha_claim.adapters.wire.schemas.preauth import DoctorConsentWire, PreauthorizationWire
 from sha_claim.adapters.wire.schemas.prescription import DispenseWire, PrescriptionWire
@@ -41,6 +42,8 @@ from sha_claim.adapters.wire.schemas.shr import (
     ShrConsentStatusWire,
     ShrConsentWire,
     ShrRefreshWire,
+    ShrSecurityLabelsWire,
+    ShrSecurityLabelWire,
     ShrVerificationWire,
     ShrVisitClosedWire,
 )
@@ -74,6 +77,7 @@ from sha_claim.domain.consent import Authorization, BiometricContext, ConsentPro
 from sha_claim.domain.eligibility import Eligibility
 from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol, EmtClaim, ProtocolLine
 from sha_claim.domain.enums import CancelReason, IdentificationType, ServiceType
+from sha_claim.domain.facility import FacilityIdentifierType, FacilityRecord
 from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import (
     AttachmentId,
@@ -94,6 +98,8 @@ from sha_claim.domain.shr import (
     ShrConsentRequest,
     ShrConsentState,
     ShrConsentTokenValue,
+    ShrReferralQuery,
+    ShrSecurityLabel,
     ShrVerification,
     ShrVisitClosed,
 )
@@ -329,7 +335,9 @@ class HttpVirtualClaimGateway:
         response = await self._transport.send(requests.close(token, reason, text))
         return mappers.to_virtual_claim(parse_as(VirtualClaimWire, response))
 
-    async def payer_status(self, claim: ClaimGuid, provider_claim_no: str) -> tuple[PayerClaimRecord, ...]:
+    async def payer_status(
+        self, claim: ClaimGuid | None, provider_claim_no: str
+    ) -> tuple[PayerClaimRecord, ...]:
         page = parse_as(
             Page[PayerClaimWire], await self._transport.send(requests.payer_status(claim, provider_claim_no))
         )
@@ -564,6 +572,126 @@ class HttpShrGateway:
         raise_for_status(response)
         body = response.json()
         return body if isinstance(body, Mapping) else {}
+
+    async def query_referrals(self, query: ShrReferralQuery) -> Mapping[str, Any]:
+        """The FHIR `searchset` of referrals, passed through exactly as DHA returned it.
+
+        No consent token: this is a query over referrals addressed to an organisation, not a read of one
+        patient's record. Paging is by the bundle's own `next` link, whose `page_token` the caller feeds
+        back in.
+        """
+        response = await self._transport.send(requests.query_shr_referrals(query))
+        raise_for_status(response)
+        body = response.json()
+        return body if isinstance(body, Mapping) else {}
+
+    async def query_observations(
+        self,
+        token: ShrConsentTokenValue,
+        subject: str,
+        practitioner_uid: str,
+        *,
+        page_token: str = "",
+    ) -> Mapping[str, Any]:
+        """A patient's observations as a FHIR `searchset`, passed through unchanged."""
+        response = await self._transport.send(
+            requests.query_shr_observations(token, subject, practitioner_uid, page_token=page_token)
+        )
+        raise_for_status(response)
+        body = response.json()
+        return body if isinstance(body, Mapping) else {}
+
+    async def security_labels(self) -> tuple[ShrSecurityLabel, ...]:
+        """The label catalogue, modelled — unlike the FHIR passthroughs above.
+
+        Worth modelling because it is *reference* data a screen has to reason about: which codes mean
+        "restricted", which are sensitivity rather than confidentiality. Entries with no code are dropped,
+        since a label that cannot be matched against a resource's `meta.security` has no use.
+        """
+        response = await self._transport.send(requests.shr_security_labels())
+        raise_for_status(response)
+        return tuple(
+            mappers.to_shr_security_label(w) for w in self._label_wires(response.json()) if w.code or w.label
+        )
+
+    @staticmethod
+    def _label_wires(body: Any) -> list[ShrSecurityLabelWire]:
+        """The catalogue, out of whichever envelope DHA wrapped it in.
+
+        Three shapes have been seen — a bare list, `{"labels": [...]}`, and `{"data": {"labels": [...]}}` —
+        so all three are unwrapped here rather than one being assumed and the others silently yielding an
+        empty catalogue, which would make every sensitivity label render as a bare code.
+        """
+        if isinstance(body, list):
+            return [ShrSecurityLabelWire.model_validate(item) for item in body if isinstance(item, Mapping)]
+        if not isinstance(body, Mapping):
+            return []
+        envelope = ShrSecurityLabelsWire.model_validate(body)
+        if envelope.labels:
+            return envelope.labels
+        data = envelope.data
+        if isinstance(data, list):
+            return [ShrSecurityLabelWire.model_validate(item) for item in data if isinstance(item, Mapping)]
+        if isinstance(data, Mapping):
+            inner = data.get("labels") or data.get("results") or data.get("security_labels")
+            if isinstance(inner, list):
+                return [ShrSecurityLabelWire.model_validate(i) for i in inner if isinstance(i, Mapping)]
+        return []
+
+
+class HttpFacilityRegistryGateway:
+    """The Facility Registry — `GET /facilities/search`.
+
+    Separate from `HttpBenefitGateway`'s bed-occupancy call, which asks about *our* facility. This one names
+    somebody else's, which is what a referral needs.
+    """
+
+    def __init__(self, transport: Transport) -> None:
+        self._transport = transport
+
+    async def search(
+        self,
+        identifier: str = "",
+        identifier_type: FacilityIdentifierType = FacilityIdentifierType.FR_CODE,
+        name: str = "",
+    ) -> tuple[FacilityRecord, ...]:
+        """Matching facilities, newest DHA envelope or oldest — see `_records`.
+
+        An empty tuple means the registry holds no match, which is an answer a picker should show as "no
+        such facility" rather than as a failure.
+        """
+        response = await self._transport.send(requests.search_facilities(identifier, identifier_type, name))
+        raise_for_status(response)
+        return tuple(
+            mappers.to_facility_record(w) for w in self._records(response.json()) if w.fr_code or w.name
+        )
+
+    @staticmethod
+    def _records(body: Any) -> list[FacilityRecordWire]:
+        """The facilities out of the envelope.
+
+        An identifier lookup answers with a bare object (one facility), a name search with a list or a
+        `data`/`results` wrapper. Treating the single-object case as a list is the bug to avoid: pydantic
+        would validate the *envelope* against the record model, every aliased field would miss, and the
+        caller would get one facility with no FR code — a picker entry that cannot be referred to.
+        """
+        if isinstance(body, list):
+            return [FacilityRecordWire.model_validate(i) for i in body if isinstance(i, Mapping)]
+        if not isinstance(body, Mapping):
+            return []
+        envelope = FacilitySearchWire.model_validate(body)
+        if envelope.results:
+            return envelope.results
+        data = envelope.data
+        if isinstance(data, list):
+            return [FacilityRecordWire.model_validate(i) for i in data if isinstance(i, Mapping)]
+        if isinstance(data, Mapping):
+            inner = data.get("results") or data.get("facilities")
+            if isinstance(inner, list):
+                return [FacilityRecordWire.model_validate(i) for i in inner if isinstance(i, Mapping)]
+            return [FacilityRecordWire.model_validate(data)]
+        # A bare facility object, which is what an identifier lookup returns.
+        return [FacilityRecordWire.model_validate(body)]
 
 
 class HttpHealthWorkerGateway:

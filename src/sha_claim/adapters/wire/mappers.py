@@ -32,6 +32,7 @@ from sha_claim.adapters.wire.schemas.claim import (
 )
 from sha_claim.adapters.wire.schemas.eligibility import CoverageWire, EligibilityWire, SchemeWire
 from sha_claim.adapters.wire.schemas.emergency import EmergencyProtocolWire
+from sha_claim.adapters.wire.schemas.facility import FacilityRecordWire
 from sha_claim.adapters.wire.schemas.files import DownloadLinkWire, StoredFileWire
 from sha_claim.adapters.wire.schemas.preauth import PreauthorizationWire
 from sha_claim.adapters.wire.schemas.prescription import DispenseWire, DosageWire, PrescriptionWire
@@ -40,6 +41,7 @@ from sha_claim.adapters.wire.schemas.shr import (
     ShrBundleReceiptWire,
     ShrConsentStatusWire,
     ShrConsentWire,
+    ShrSecurityLabelWire,
     ShrVerificationWire,
     ShrVisitClosedWire,
 )
@@ -80,6 +82,7 @@ from sha_claim.domain.enums import (
     PaymentMechanism,
     ServiceType,
 )
+from sha_claim.domain.facility import FacilityAddress, FacilityBeds, FacilityRecord
 from sha_claim.domain.files import DownloadLink, StoredFile
 from sha_claim.domain.identifiers import (
     AttachmentId,
@@ -100,8 +103,10 @@ from sha_claim.domain.shr import (
     ShrConsent,
     ShrConsentState,
     ShrConsentTokenValue,
+    ShrSecurityLabel,
     ShrVerification,
     ShrVisitClosed,
+    label_kind_for,
 )
 
 
@@ -690,6 +695,125 @@ def to_shr_bundle_receipt(w: ShrBundleReceiptWire) -> ShrBundleReceipt:
         mediator_id=w.mediator_id,
         extra=w.unmodelled(),
     )
+
+
+def to_shr_security_label(w: ShrSecurityLabelWire) -> ShrSecurityLabel:
+    """One catalogue entry.
+
+    `kind` is derived rather than trusted: DHA's `category` is free text and has been absent, so the system
+    URI decides, with the code list as fallback (`label_kind_for`). Nothing is invented for `display` — an
+    entry DHA gave no wording for shows its code, which a clinician can at least look up.
+    """
+    display = w.display or w.name or w.label
+    code = w.code or w.label
+    return ShrSecurityLabel(
+        code=code,
+        display=display if display != code else "",
+        system=w.system,
+        kind=label_kind_for(w.system, code),
+        description=w.description,
+        extra=w.unmodelled(),
+    )
+
+
+def to_facility_record(w: FacilityRecordWire) -> FacilityRecord:
+    """A registry entry, flattened to what a referral desk needs.
+
+    `sha_contracted_services` arrives as a list of strings in some responses and of objects in others, so
+    each entry is reduced to its name and the unreadable ones dropped — a blank chip in a service list is
+    worse than a shorter list.
+    """
+    services = tuple(s for s in (_service_name(item) for item in w.sha_contracted_services) if s)
+    address = w.address
+    beds = w.bed_occupancy
+    return FacilityRecord(
+        fr_code=w.fr_code,
+        name=w.name,
+        uuid=w.uuid,
+        facility_type=w.facility_type,
+        keph_level=str(w.keph_level or ""),
+        owner=w.owner,
+        # Both statuses arrive as objects. The *reason* a facility is not operating lives inside them, so
+        # taking only the status word would drop the one thing a desk can act on.
+        operation_status=w.regulatory_operational_status.operational_status
+        if w.regulatory_operational_status
+        else "",
+        sha_operation_status=w.sha_operation_status.operational_status if w.sha_operation_status else "",
+        sha_contract_status=w.sha_contract_status,
+        sha_contracted_services=services,
+        suspension_reason=_suspension_reason(w),
+        is_hub=w.is_hub,
+        phone=w.facility_phone_number,
+        email=w.facility_email or w.facility_administrator_email,
+        administrator_name=w.facility_administrator_name,
+        address=FacilityAddress(
+            county=address.county,
+            sub_county=address.sub_county,
+            constituency=address.constituency,
+            ward=address.ward,
+            town=address.town,
+            latitude=_coordinate(address.latitude),
+            longitude=_coordinate(address.longitude),
+        )
+        if address
+        else FacilityAddress(),
+        beds=FacilityBeds(
+            normal_beds=beds.normal_beds,
+            icu_beds=beds.icu_beds,
+            hdu_beds=beds.hdu_beds,
+            maternity_beds=beds.maternity_beds,
+            dialysis_beds=beds.dialysis_beds,
+            cots=beds.number_of_cots,
+            isolation_beds=beds.isolation_beds,
+            theatres=beds.theatres,
+        )
+        if beds
+        else FacilityBeds(),
+        extra=w.unmodelled(),
+    )
+
+
+def _suspension_reason(w: FacilityRecordWire) -> str:
+    """Why a facility is not operating, from whichever status object carries it.
+
+    SHA's own view is preferred: a facility its regulator is content with can still be suspended by SHA, and
+    that is the one that stops a referral being paid for.
+    """
+    for status in (w.sha_operation_status, w.regulatory_operational_status):
+        if status is None:
+            continue
+        reason = status.suspension_reason or status.operational_status_reason
+        if reason:
+            return reason
+    return ""
+
+
+def _coordinate(value: str) -> float | None:
+    """A latitude or longitude, which arrives as a string and is usually `""`.
+
+    `None` for anything unreadable rather than `0.0` — a facility at the equator and a facility with no
+    coordinates are not the same place, and plotting the second one in the Gulf of Guinea is worse than
+    plotting nothing.
+    """
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _service_name(item: object) -> str:
+    """A contracted service's name, whichever shape DHA used for it."""
+    if isinstance(item, str):
+        return item.strip()
+    if isinstance(item, dict):
+        for key in ("name", "serviceName", "service_name", "service", "display", "code"):
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
 
 
 def to_health_worker(w: HealthWorkerWire) -> HealthWorker:

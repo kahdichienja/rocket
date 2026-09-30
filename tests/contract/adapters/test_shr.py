@@ -18,15 +18,27 @@ from sha_claim.adapters.wire.mappers import (
     to_shr_bundle_receipt,
     to_shr_consent,
     to_shr_consent_state,
+    to_shr_security_label,
     to_shr_verification,
 )
 from sha_claim.adapters.wire.schemas.shr import (
     ShrBundleReceiptWire,
     ShrConsentStatusWire,
     ShrConsentWire,
+    ShrSecurityLabelWire,
     ShrVerificationWire,
 )
-from sha_claim.domain.shr import ShrConsentRequest, ShrConsentTokenValue, ShrVisitType
+from sha_claim.domain.shr import (
+    ACT_CODE_SYSTEM,
+    CONFIDENTIALITY_SYSTEM,
+    ShrConsentRequest,
+    ShrConsentTokenValue,
+    ShrLabelKind,
+    ShrReferralQuery,
+    ShrReferralStatus,
+    ShrVisitType,
+    label_kind_for,
+)
 
 TOKEN = ShrConsentTokenValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9")
 
@@ -314,3 +326,120 @@ class TestAttachmentDocumentTypes:
 
         with pytest.raises(ValueError, match="document type"):
             Attachment("a.pdf", b"x", "   ")
+
+
+class TestTheReferralQuery:
+    """`GET /shr/ServiceRequest` — the one SHR read that is *not* scoped by a patient's consent."""
+
+    def test_sends_no_consent_token(self) -> None:
+        """The property the whole referral inbox rests on.
+
+        If this query needed a consent token, a receiving facility could not see a referral until the
+        patient arrived and read out an OTP — which is exactly backwards, since the point of the inbox is
+        to know the patient is coming. DHA scopes it by organisation instead.
+        """
+        wire = requests.query_shr_referrals(ShrReferralQuery(performer_fr_code="FID-17-116073-1"))
+        assert wire.headers == {}
+        assert "X-Consent-Token" not in wire.headers
+
+    def test_performer_keeps_the_fhir_reference_type_modifier(self) -> None:
+        """`performer:Organization`, colon and all. Sending plain `performer` searches a different field."""
+        wire = requests.query_shr_referrals(ShrReferralQuery(performer_fr_code="FID-17-116073-1"))
+        assert wire.method == "GET"
+        assert wire.path == "/shr/ServiceRequest"
+        assert wire.params == {"performer:Organization": "FID-17-116073-1"}
+
+    def test_requester_is_the_outbox_and_performer_the_inbox(self) -> None:
+        """The two directions are separate parameters, and confusing them shows the wrong worklist."""
+        inbox = requests.query_shr_referrals(ShrReferralQuery(performer_fr_code="FID-1"))
+        outbox = requests.query_shr_referrals(ShrReferralQuery(requester_fr_code="FID-1"))
+        assert inbox.params == {"performer:Organization": "FID-1"}
+        assert outbox.params == {"requester:Organization": "FID-1"}
+
+    def test_status_count_and_page_token_ride_along(self) -> None:
+        wire = requests.query_shr_referrals(
+            ShrReferralQuery(
+                performer_fr_code="FID-1", status="active", count=25, page_token="Bnm8Qm7w4Sngv-4W_GpOfrNn"
+            )
+        )
+        assert wire.params == {
+            "performer:Organization": "FID-1",
+            "status": "active",
+            "count": "25",
+            "page_token": "Bnm8Qm7w4Sngv-4W_GpOfrNn",
+        }
+
+    def test_a_query_with_no_direction_is_refused(self) -> None:
+        """Otherwise this is a search over every referral DHA holds, which no caller means to run."""
+        with pytest.raises(ValueError, match="a referral query needs"):
+            ShrReferralQuery()
+
+    def test_empty_optionals_are_omitted_rather_than_sent_blank(self) -> None:
+        """A blank `status=` is a filter on the empty string upstream, not an absent filter."""
+        wire = requests.query_shr_referrals(ShrReferralQuery(performer_fr_code="FID-1", status="", count=0))
+        assert wire.params == {"performer:Organization": "FID-1"}
+
+    def test_referral_status_is_fhirs_vocabulary(self) -> None:
+        """FHIR's hyphenated spellings, not an approximation of them."""
+        assert ShrReferralStatus.ON_HOLD.value == "on-hold"
+        assert ShrReferralStatus.ENTERED_IN_ERROR.value == "entered-in-error"
+
+
+class TestTheObservationQuery:
+    def test_carries_both_the_consent_token_and_the_puid(self) -> None:
+        """`X-PUID` is required on this endpoint and on no other in this SDK.
+
+        `fetch_shr_records` sends the same practitioner as a *query parameter*; here it is a header. DHA
+        rejects it in the wrong place, so the two are not interchangeable.
+        """
+        wire = requests.query_shr_observations(TOKEN, "CR-2026-000256", "HWR-99812")
+        assert wire.method == "GET"
+        assert wire.path == "/shr/Observation"
+        assert wire.headers == {"X-Consent-Token": TOKEN.value, "X-PUID": "HWR-99812"}
+        assert wire.params == {"subject": "CR-2026-000256"}
+
+    def test_pages_by_token(self) -> None:
+        wire = requests.query_shr_observations(TOKEN, "CR-2026-000256", "HWR-99812", page_token="abc123")
+        assert wire.params == {"subject": "CR-2026-000256", "page_token": "abc123"}
+
+
+class TestTheSecurityLabelCatalogue:
+    def test_takes_no_parameters(self) -> None:
+        """Unlike `/shr/resource-labels`, which requires a filter. Different question, different endpoint."""
+        wire = requests.shr_security_labels()
+        assert wire.method == "GET"
+        assert wire.path == "/shr/security-labels"
+        assert wire.params == {}
+
+    def test_confidentiality_and_sensitivity_are_told_apart_by_system(self) -> None:
+        """They answer different questions and conflating them misreports how guarded a record is."""
+        assert label_kind_for(CONFIDENTIALITY_SYSTEM, "N") is ShrLabelKind.CONFIDENTIALITY
+        assert label_kind_for(ACT_CODE_SYSTEM, "HIV") is ShrLabelKind.SENSITIVITY
+
+    def test_falls_back_to_the_code_when_no_system_is_given(self) -> None:
+        assert label_kind_for("", "R") is ShrLabelKind.CONFIDENTIALITY
+        assert label_kind_for("", "PSY") is ShrLabelKind.SENSITIVITY
+
+    def test_an_unknown_code_is_not_filed_under_a_guess(self) -> None:
+        """Guessing would let a sensitivity code be read as a confidentiality one, or the reverse."""
+        assert label_kind_for("", "WHATEVER") is ShrLabelKind.UNKNOWN
+
+    def test_display_falls_back_to_the_code_never_to_an_invention(self) -> None:
+        """A code a clinician can look up beats a plausible-sounding guess at its meaning."""
+        label = to_shr_security_label(ShrSecurityLabelWire(code="GDIS", system=ACT_CODE_SYSTEM))
+        assert label.label == "GDIS"
+        assert label.display == ""
+        assert label.kind is ShrLabelKind.SENSITIVITY
+
+    def test_a_display_that_is_given_is_used(self) -> None:
+        label = to_shr_security_label(
+            ShrSecurityLabelWire(code="PSY", display="Psychiatry", system=ACT_CODE_SYSTEM)
+        )
+        assert label.label == "Psychiatry"
+
+    def test_restricted_is_only_the_confidentiality_r(self) -> None:
+        """A sensitivity code is not a confidentiality level, however sensitive it is."""
+        restricted = to_shr_security_label(ShrSecurityLabelWire(code="R", system=CONFIDENTIALITY_SYSTEM))
+        hiv = to_shr_security_label(ShrSecurityLabelWire(code="HIV", system=ACT_CODE_SYSTEM))
+        assert restricted.is_restricted is True
+        assert hiv.is_restricted is False

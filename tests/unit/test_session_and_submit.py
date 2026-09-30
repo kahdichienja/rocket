@@ -213,7 +213,7 @@ class FakeGateway:
         self._rec("set_coverage", token, selection)
 
     async def payer_status(
-        self, claim_guid: ClaimGuid, provider_claim_no: str
+        self, claim_guid: ClaimGuid | None, provider_claim_no: str
     ) -> tuple[PayerClaimRecord, ...]:
         self._rec("payer_status", claim_guid, provider_claim_no)
         return (
@@ -387,11 +387,23 @@ async def test_lifecycle_refreshes_snapshot() -> None:
     assert (await s.close(CancelReason.WRONG_PATIENT, "typo")).workflow_state == "CLOSED"
 
 
-async def test_payer_status_previews_first_when_no_guid() -> None:
+async def test_payer_status_asks_directly_and_sends_no_guid() -> None:
+    """It used to `preview()` first so it could send the claim guid. Both halves were wrong.
+
+    The guid this endpoint filters on is the **payer claim's**, a different value from the provider-side
+    guid we hold — the only place it appears is in this endpoint's own response. Sending ours matched
+    nothing, and the endpoint answered `200 {"results": []}` instead of an error, which is
+    indistinguishable from "the payer has not opened a row yet". Verified on UAT against a live claim:
+    `provider_claim_no` alone returned it; with the guid, nothing did.
+
+    The `preview()` was the second fault: it made a status check depend on a consent token, which has
+    expired by the time anyone asks how a claim is going.
+    """
     gw = FakeGateway()
     s = ClaimSession(gateways(claims=gw), TOKEN)  # resumed from a bare token
     records = await s.payer_status("INV-1")
-    assert [c[0] for c in gw.calls] == ["preview", "payer_status"]
+    assert [c[0] for c in gw.calls] == ["payer_status"], "no preview, and no consent token needed"
+    assert gw.calls[-1][1][0] is None, "the guid must not be sent"
     assert records[0].status == "RECEIVED"
 
 

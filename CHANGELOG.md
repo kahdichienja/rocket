@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.32] — 2026-10-05
+
+### Fixed
+- **Primary doctor assignment on pre-authorisations (`is_primary: true`).** `POST /preauths` requires
+  each doctor in the serialized `doctors` JSON array to carry `is_primary: true` for the primary attending
+  practitioner. Preauthorisation requests now explicitly serialize `is_primary` (defaulting the primary
+  doctor to `True`), preventing SHA's rejection `400 : A primary doctor must be assigned to the preauthorisation`.
+- Added optional `is_primary` support on `PractitionerRef`.
+
 ## [0.1.31] — 2026-09-30
 
 ### Added

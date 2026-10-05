@@ -125,6 +125,7 @@ class TestTheOtherThreeThatWereWrong:
                 "identification_number": "12345678",
                 "regulation_body": "KMPDC",
                 "intervention_code": "SHA-19-074",
+                "is_primary": True,
             }
         ]
 

@@ -47,6 +47,7 @@ def test_create_preauth_multipart_encoding() -> None:
             "regulation_body": "KMPDC",
             "practitioner_registration_number": "A1234",
             "intervention_code": "SHA-08-006",
+            "is_primary": True,
         }
     ]
     assert json.loads(r.form["attachments"]) == []

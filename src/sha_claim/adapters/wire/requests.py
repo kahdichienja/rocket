@@ -408,8 +408,12 @@ def create_preauth(token: ConsentToken, request: PreauthRequest) -> WireRequest:
         ),
         "doctors": json.dumps(
             [
-                {**_practitioner_fields(d), "intervention_code": request.intervention_code.value}
-                for d in request.doctors
+                {
+                    **_practitioner_fields(d),
+                    "intervention_code": request.intervention_code.value,
+                    "is_primary": d.is_primary if d.is_primary is not None else (index == 0),
+                }
+                for index, d in enumerate(request.doctors)
             ]
         ),
         "attachments": json.dumps(attachment_meta),

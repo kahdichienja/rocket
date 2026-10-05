@@ -17,6 +17,7 @@ class PractitionerRef:
     identification_number: str
     identification_type: IdentificationType
     regulation_body: RegulationBody
+    is_primary: bool | None = None
 
     def __post_init__(self) -> None:
         if not self.identification_number.strip():
@@ -24,8 +25,10 @@ class PractitionerRef:
         object.__setattr__(self, "identification_number", self.identification_number.strip())
 
     @classmethod
-    def registered(cls, registration_number: str, body: RegulationBody) -> PractitionerRef:
-        return cls(registration_number, IdentificationType.REGISTRATION_NUMBER, body)
+    def registered(
+        cls, registration_number: str, body: RegulationBody, *, is_primary: bool | None = None
+    ) -> PractitionerRef:
+        return cls(registration_number, IdentificationType.REGISTRATION_NUMBER, body, is_primary=is_primary)
 
 
 @dataclass(frozen=True, slots=True)

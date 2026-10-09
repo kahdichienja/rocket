@@ -2,6 +2,41 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.33] — 2026-10-09
+
+### Added
+- **The per-diem rules from DHA's SHIF IP scenario, as checks on a snapshot.** `VirtualClaim.active_per_diem`
+  (the one intervention a visit is paid by the day under), `lines_for(intervention)`, and
+  `line_blockers(intervention, unit_price)`. The last answers the question DHA answers destructively: a
+  per-diem `unit_price` above the facility's Hospital Level Tariff does not refuse that line, it "rolls back
+  the entire request", so the diagnoses and attachments of a combined billing call are lost with it — and the
+  400 that comes back says none of that. `add_line` now refuses it from the held snapshot instead, and a
+  session with no snapshot yet is left to the server.
+
+  DHA generating the per-diem line itself makes a line from the facility *unnecessary, not forbidden*. These
+  checks deliberately do not refuse the stay's other charges: read the other way, a real inpatient bill can
+  send nothing at all, because every charge defaults to the visit's one active intervention.
+
+- **`MULTIPLE_ACTIVE_PER_DIEM` submission blocker.** A claim may carry one active per-diem intervention; a
+  ward change is `switch_intervention`, not a second `add_intervention`. Whether a *new* code is per-diem is
+  not on the claim snapshot — it comes from the coverage catalogue — so `add_intervention` cannot pre-empt
+  it, and this reports the state after the fact.
+
+### Fixed
+- **`switch_intervention` refuses a cross-fund switch before spending the call.** An intervention code names
+  its scheme family: `PMF-*` is the Public Officers fund, `SHA-*` is general cover. DHA will not combine the
+  two and says so only afterwards — `Intervention Combination: HDU CARE (Public Officers Medical Scheme Fund)
+  (PMF-03-002) cannot be combined with ICU CARE (SHA-03-001)` — which is an obscure way to learn that the
+  right ward was picked from the wrong fund. The prefixes decide it, so no call is needed.
+
+### Documentation
+- **`ClaimSession.discharge` records a contradiction, rather than resolving it.** DHA's published per-diem
+  scenario states that discharge "both discharges the patient and simultaneously submits the claim to SHA.
+  There is no separate submit step for inpatient claims", and its call sequence contains no `/claims/submit`.
+  That is the opposite of what UAT was observed to require, which is why `submit` still exists and is still
+  called. Until the two agree, treat a `submit` after an inpatient `discharge` as possibly redundant rather
+  than load-bearing; `preview()` settles which of the two filed the claim.
+
 ## [0.1.32] — 2026-10-05
 
 ### Fixed

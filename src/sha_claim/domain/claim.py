@@ -218,6 +218,63 @@ class VirtualClaim:
     def active_interventions(self) -> tuple[ClaimIntervention, ...]:
         return tuple(i for i in self.interventions if not _is_retired(i.workflow_state))
 
+    @property
+    def active_per_diem(self) -> ClaimIntervention | None:
+        """The one intervention SHA is paying by the day, if the visit is on a per-diem bed.
+
+        DHA allows a single active per-diem intervention per claim, so a ward change is
+        `switch_intervention`, never a second `add_intervention`. More than one here means the server let
+        through something its own documentation forbids; `submission_blockers` reports that rather than
+        this picking a winner.
+        """
+        per_diem = [i for i in self.active_interventions if i.is_per_diem]
+        return per_diem[0] if per_diem else None
+
+    def lines_for(self, intervention: InterventionCode) -> tuple[ClaimLine, ...]:
+        """Active billed lines against one intervention."""
+        return tuple(line for line in self.lines if line.is_active and line.intervention_code == intervention)
+
+    def line_blockers(
+        self, intervention: InterventionCode, unit_price: Money | None = None
+    ) -> tuple[Blocker, ...]:
+        """Reasons DHA will refuse a line on this claim, read off *this* snapshot.
+
+        One rule, because it is the only one that refuses in a way the caller cannot read back from the
+        error: on a per-diem intervention, `unit_price` above the facility's Hospital Level Tariff makes
+        DHA "roll back the entire request", so the combined call's diagnoses and attachments are lost
+        with it and the message says none of that.
+
+        DHA also writes the per-diem line itself, from the days it has accrued — but that means a line
+        from the facility is *unnecessary*, not forbidden. Treating it as forbidden left a real inpatient
+        bill unable to send anything at all, because every charge defaults to the visit's one active
+        intervention. What the daily rate does not stretch to is a settlement question for the caller,
+        not a refusal to pre-empt here.
+
+        Pure, and conservative in the same way as `submission_blockers`: an empty tuple means no known
+        blocker, not a guarantee. Where SHA has published no rate for the facility's KEPH level — every
+        UAT facility today — there is no ceiling to check and none is invented.
+        """
+        target = next((i for i in self.active_interventions if i.code == intervention), None)
+        if target is None or not target.is_per_diem:
+            return ()
+        blockers: list[Blocker] = []
+        tariff = target.keph_level_tariff
+        if (
+            unit_price is not None
+            and tariff is not None
+            and tariff.amount > 0
+            and unit_price.amount > tariff.amount
+        ):
+            blockers.append(
+                Blocker(
+                    "LINE_ABOVE_KEPH_TARIFF",
+                    f"unit price {unit_price.amount} exceeds the {tariff.amount} per-diem tariff for this "
+                    "facility's KEPH level; DHA rolls the whole request back",
+                    intervention,
+                )
+            )
+        return tuple(blockers)
+
     def submission_blockers(self) -> tuple[Blocker, ...]:
         """Reasons the server will refuse `submit`, read off *this* snapshot. Empty tuple = nothing obvious.
 
@@ -256,6 +313,15 @@ class VirtualClaim:
                 )
         if self.interventions and not self.active_interventions:
             blockers.append(Blocker("NO_ACTIVE_INTERVENTIONS", "every intervention on the claim is retired"))
+        per_diem = [i for i in self.active_interventions if i.is_per_diem]
+        if len(per_diem) > 1:
+            blockers.append(
+                Blocker(
+                    "MULTIPLE_ACTIVE_PER_DIEM",
+                    "a claim may carry one active per-diem intervention; these are "
+                    f"{', '.join(sorted(i.code.value for i in per_diem))} — switch rather than add",
+                )
+            )
         return tuple(blockers)
 
     def _missing_required_documents(self, intervention: ClaimIntervention) -> set[str]:
@@ -361,6 +427,9 @@ class Discharge:
 
     UAT requires discharge *before* submit for every service type, and wants an RFC 3339 datetime
     (`2026-09-20T18:50:00+03:00`), not a bare date.
+
+    For inpatient, DHA's published scenario says this call submits the claim as well and that no separate
+    submit step exists — see `ClaimSession.discharge` for the discrepancy and how to tell which call filed.
     """
 
     discharged_at: datetime

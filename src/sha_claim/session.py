@@ -52,6 +52,7 @@ from sha_claim.domain.prescription import (
     Prescription,
     PrescriptionRequest,
 )
+from sha_claim.domain.schemes import scheme_family
 from sha_claim.errors import RequestValidationError, Violation
 from sha_claim.ports.claim_gateways import ClaimGateways
 from sha_claim.use_cases.submit_claim import SubmitClaim
@@ -82,6 +83,12 @@ class ClaimSession:
 
         DHA rules: the visit must be active; the code must be a recognised intervention; it must not
         break combination rules with what is already on the visit (e.g. no mixing IP and OP interventions).
+
+        **One active per-diem at a time.** A claim may carry only one, so moving a patient between wards
+        (General → ICU) is `switch_intervention`, not a second `add_intervention` beside the first. Whether
+        a *new* code is per-diem is not on the claim snapshot — it comes from the coverage catalogue — so
+        this cannot check it before calling; `claim.active_per_diem` says what the visit is already on, and
+        `submission_blockers` reports `MULTIPLE_ACTIVE_PER_DIEM` if two ever end up active.
         """
         return await self._gateway.add_intervention(self.consent_token, InterventionCode.of(code))
 
@@ -112,15 +119,34 @@ class ClaimSession:
         pre-authorization; when `retain_bill_items` is true, `bill_from` and `bill_to` (the previous
         intervention's billing period) are required — checked here before anything is sent. Retention is
         not possible from per-diem to surgical interventions.
+
+        The two codes must also come from the same scheme family — `PMF-*` is the Public Officers fund and
+        `SHA-*` is general cover. DHA refuses to combine them ("Intervention Combination: HDU CARE (Public
+        Officers Medical Scheme Fund) (PMF-03-002) cannot be combined with ICU CARE (SHA-03-001)"), which
+        is an obscure way to say the right ward was picked from the wrong fund. Checked here, since the
+        prefixes decide it and no call is needed to find out.
         """
+        existing_code = InterventionCode.of(existing)
+        new_code = InterventionCode.of(new)
+        families = (scheme_family(existing_code.value), scheme_family(new_code.value))
+        if all(families) and families[0] != families[1]:
+            raise RequestValidationError(
+                [
+                    Violation(
+                        "new",
+                        f"{new_code.value} is {families[1]} cover and {existing_code.value} is "
+                        f"{families[0]}; DHA will not combine the two on one claim",
+                    )
+                ]
+            )
         if retain_bill_items and (bill_from is None or bill_to is None):
             raise RequestValidationError(
                 [Violation("bill_from/bill_to", "required when retain_bill_items is true")]
             )
         await self._gateway.switch_intervention(
             self.consent_token,
-            InterventionCode.of(existing),
-            InterventionCode.of(new),
+            existing_code,
+            new_code,
             retain_bill_items,
             bill_from,
             bill_to,
@@ -161,10 +187,21 @@ class ClaimSession:
         With `diagnoses`/`attachments` this is DHA's "Add Combined Billing Details": one multipart call.
         `service_name`/`service_identifier` label the line and tie it to your own charge record; the
         amount must be within the tariff or the member's PMF balance.
+
+        **A per-diem intervention does not need a manual line**, because DHA builds one from the accrued
+        days and the facility's Hospital Level Tariff — but it still accepts the stay's charges, so this
+        does not refuse them. What it does refuse is a `unit_price` above that tariff: DHA then "rolls
+        back the entire request" and the diagnoses and attachments go with it, in a 400 that names none of
+        it. See `VirtualClaim.line_blockers`. A session with no snapshot yet (resumed from a bare token,
+        before `preview()`) has nothing to check against and is left to the server.
         """
+        code = InterventionCode.of(intervention)
+        blockers = self.claim.line_blockers(code, unit_price) if self.claim is not None else ()
+        if blockers:
+            raise RequestValidationError([Violation("line", str(b)) for b in blockers])
         try:
             line = NewClaimLine(
-                intervention_code=InterventionCode.of(intervention),
+                intervention_code=code,
                 unit_price=unit_price,
                 quantity=quantity,
                 scheme_code=SchemeCode.of(scheme_code) if scheme_code is not None else None,
@@ -287,6 +324,17 @@ class ClaimSession:
         discharged_at: datetime | None = None,
     ) -> VirtualClaim:
         """`POST /claims/discharge` — ends the visit. **Required before `submit` for every service type** (observed on UAT).
+
+        **For inpatient this is also the submit.** DHA's published per-diem scenario states that discharge
+        "both discharges the patient and simultaneously submits the claim to SHA. There is no separate
+        submit step for inpatient claims", and its call sequence ends here — no `/claims/submit` appears in
+        it. That contradicts what UAT was observed to require (discharge, then `submit`, for every service
+        type, which is why `submit` still exists and is still called). Until the two agree, treat a
+        `submit` after an inpatient `discharge` as possibly redundant rather than load-bearing: if it comes
+        back refused with the claim already submitted, `preview()` is what settles which of the two filed it.
+
+        Run `preview()` first either way — it is the only check that the claim is complete, and after this
+        call nothing can be changed.
 
         `discharged_at` defaults to now (UTC); if given it must be timezone-aware.
         """

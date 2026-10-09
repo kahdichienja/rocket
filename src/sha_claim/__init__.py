@@ -10,6 +10,18 @@ from sha_claim.domain.benefits import (
     SubBenefit,
     UtilizationBalance,
 )
+from sha_claim.domain.callbacks import (
+    STATUS_CHANGED,
+    CallbackAuthType,
+    CallbackEndpoint,
+    CallbackEndpointUpdate,
+    CallbackEntityType,
+    CallbackEnvironment,
+    CallbackOperation,
+    CallbackOperationUpdate,
+    NewCallbackEndpoint,
+    NewCallbackOperation,
+)
 from sha_claim.domain.claim import (
     Blocker,
     ClaimAttachment,
@@ -161,9 +173,10 @@ from sha_claim.settings import Environment, SHASettings, Timeouts
 #: message insisting the right version was the wrong one. Deriving it from package metadata instead looked
 #: tempting and is worse: an editable checkout reports whatever it was last installed as (`0.1.0.dev0`
 #: here), so the guard would then reject every development environment.
-__version__ = "0.1.34"
+__version__ = "0.1.35"
 
 __all__ = [
+    "STATUS_CHANGED",
     "AnaesthesiaType",
     "AsyncSHAClient",
     "Attachment",
@@ -180,6 +193,13 @@ __all__ = [
     "BiometricGuid",
     "Blocker",
     "BroughtBy",
+    "CallbackAuthType",
+    "CallbackEndpoint",
+    "CallbackEndpointUpdate",
+    "CallbackEntityType",
+    "CallbackEnvironment",
+    "CallbackOperation",
+    "CallbackOperationUpdate",
     "CancelReason",
     "CarcinomaStaging",
     "ClaimAttachment",
@@ -239,6 +259,8 @@ __all__ = [
     "MetastasisSite",
     "ModeOfArrival",
     "Money",
+    "NewCallbackEndpoint",
+    "NewCallbackOperation",
     "NewClaimLine",
     "NewOrReplacement",
     "NextOfKin",

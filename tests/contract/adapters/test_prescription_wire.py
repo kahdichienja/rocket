@@ -4,6 +4,7 @@ from decimal import Decimal
 from sha_claim.adapters.wire import mappers, requests
 from sha_claim.adapters.wire.schemas.prescription import DispenseWire, PrescriptionWire
 from sha_claim.domain.codes import InterventionCode, RegulationBody
+from sha_claim.domain.enums import IdentificationType
 from sha_claim.domain.identifiers import ConsentToken
 from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import PractitionerRef
@@ -69,9 +70,26 @@ def test_create_dispense_body_matches_portal_field_names() -> None:
         "total_quantity": 15,
         "medication_price": 12.5,
     }
-    # UAT (2026-09-24): singular path, and this endpoint alone refuses `registration_number` for the dispenser.
+    # UAT (2026-09-24): singular path, and this endpoint alone refuses `registration_number` for the
+    # dispenser. That refusal is DHA's to make: the type is sent exactly as the caller chose it, where
+    # it used to be rewritten to "National ID" behind their back — filing a licence number as a national
+    # id, on a record of who handed medicine to a patient.
     assert r.path == "/prescriptions/dispense"
-    assert r.json["doctors"][0]["identification_type"] == "National ID"
+    assert r.json["doctors"][0]["identification_type"] == "registration_number"
+
+
+def test_dispenser_identification_type_is_sent_as_chosen() -> None:
+    """Whatever the caller picked reaches DHA, including the documents this endpoint prefers."""
+    for kind in (IdentificationType.NATIONAL_ID, IdentificationType.ALIEN_ID, IdentificationType.REFUGEE_ID):
+        r = requests.create_dispense(
+            TOKEN,
+            DispenseRequest(
+                CODE,
+                (DispensedProduct("AMOX500-GEN", 1, Money.kes("1.00")),),
+                (PractitionerRef("ID-1", kind, RegulationBody.PPB),),
+            ),
+        )
+        assert r.json["doctors"][0]["identification_type"] == kind.value
 
 
 def test_get_and_remove_doctor_requests() -> None:

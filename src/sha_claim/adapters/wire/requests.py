@@ -10,6 +10,12 @@ from typing import Any
 
 from sha_claim.adapters.wire.transport import TimeoutKind, WireRequest
 from sha_claim.domain.attachments import Attachment
+from sha_claim.domain.callbacks import (
+    CallbackEndpointUpdate,
+    CallbackOperationUpdate,
+    NewCallbackEndpoint,
+    NewCallbackOperation,
+)
 from sha_claim.domain.claim import CoverageSelection, Discharge, LineEdit, NewClaimLine, NextOfKin, Submission
 from sha_claim.domain.codes import Icd11Code, InterventionCode
 from sha_claim.domain.consent import BiometricContext, BiometricGuid, ConsentProof, MatchId, Otp
@@ -548,11 +554,6 @@ def get_prescription(token: ConsentToken) -> WireRequest:
     return WireRequest("GET", "/prescriptions", params={"consent_token": token.value})
 
 
-def _dispenser_id_type(kind: IdentificationType) -> IdentificationType:
-    """`/prescriptions/dispense` rejects `registration_number`; fall back to the member-style National ID."""
-    return IdentificationType.NATIONAL_ID if kind is IdentificationType.REGISTRATION_NUMBER else kind
-
-
 def create_dispense(token: ConsentToken, request: DispenseRequest) -> WireRequest:
     return WireRequest(
         "POST",
@@ -572,10 +573,15 @@ def create_dispense(token: ConsentToken, request: DispenseRequest) -> WireReques
             # This endpoint takes an identity document for the dispenser, not a practitioner registration:
             # UAT refuses `registration_number` here ("is not a valid choice") and accepts `National ID`,
             # unlike every other practitioner field in the API.
+            #
+            # It used to be rewritten silently — `registration_number` in, `National ID` out — so a
+            # dispense went through with a practitioner's licence number filed as their national ID, and
+            # nothing said so. The caller's choice is now sent as given: if DHA still refuses it, it says
+            # so, and a refusal naming the field beats a record that is quietly wrong about who dispensed.
             "doctors": [
                 {
                     "identification_number": d.identification_number,
-                    "identification_type": _dispenser_id_type(d.identification_type).value,
+                    "identification_type": d.identification_type.value,
                 }
                 for d in request.dispensers
             ],
@@ -967,3 +973,126 @@ def find_health_worker(
         "regulator": regulator.strip().upper(),
     }
     return WireRequest("GET", "/professionals", params=params)
+
+
+# ── status callbacks ───────────────────────────────────────────────────────────────────────────────
+#
+# The management API for DHA's push channel. Note the two shapes of path: endpoints are addressed under
+# a tenant when they are created or listed, and *without* one once they have an id. That asymmetry is
+# DHA's, not a transcription error.
+
+
+def list_callback_endpoints(tenant: str, entity_type: str = "") -> WireRequest:
+    params = {"entity_type": entity_type} if entity_type else {}
+    return WireRequest("GET", f"/tenants/{tenant}/endpoints", params=params)
+
+
+def register_callback_endpoint(tenant: str, endpoint: NewCallbackEndpoint) -> WireRequest:
+    body: dict[str, object] = {
+        "name": endpoint.name.strip(),
+        "base_url": endpoint.base_url.strip(),
+        "entity_type": endpoint.entity_type.value,
+        "environment": endpoint.environment.value,
+        "auth_type": endpoint.auth_type.value,
+    }
+    if endpoint.secret_ref.strip():
+        body["secret_ref"] = endpoint.secret_ref.strip()
+    if endpoint.facility_fr_code.strip():
+        body["facility_fr_code"] = endpoint.facility_fr_code.strip()
+    if endpoint.tenant_code.strip():
+        body["tenant_code"] = endpoint.tenant_code.strip()
+    if endpoint.timeout_ms is not None:
+        body["timeout_ms"] = endpoint.timeout_ms
+    if endpoint.headers:
+        body["headers"] = dict(endpoint.headers)
+    return WireRequest("POST", f"/tenants/{tenant}/endpoints", json=body)
+
+
+def update_callback_endpoint(endpoint_id: str, changes: CallbackEndpointUpdate) -> WireRequest:
+    body: dict[str, object] = {}
+    if changes.name is not None:
+        body["name"] = changes.name
+    if changes.base_url is not None:
+        body["base_url"] = changes.base_url
+    if changes.entity_type is not None:
+        body["entity_type"] = changes.entity_type.value
+    if changes.environment is not None:
+        body["environment"] = changes.environment.value
+    if changes.auth_type is not None:
+        body["auth_type"] = changes.auth_type.value
+    if changes.secret_ref is not None:
+        body["secret_ref"] = changes.secret_ref
+    if changes.tenant_code is not None:
+        body["tenant_code"] = changes.tenant_code
+    if changes.timeout_ms is not None:
+        body["timeout_ms"] = changes.timeout_ms
+    if changes.headers is not None:
+        body["headers"] = dict(changes.headers)
+    if changes.is_active is not None:
+        body["is_active"] = changes.is_active
+    return WireRequest("PATCH", f"/tenants/endpoints/{endpoint_id}", json=body)
+
+
+def delete_callback_endpoint(endpoint_id: str) -> WireRequest:
+    """Takes the endpoint and **every operation under it**. Delivery stops at once."""
+    return WireRequest("DELETE", f"/tenants/endpoints/{endpoint_id}")
+
+
+def list_callback_operations(tenant: str, endpoint_id: str, action: str = "") -> WireRequest:
+    params = {"action": action} if action else {}
+    return WireRequest("GET", f"/tenants/{tenant}/endpoints/{endpoint_id}/operations", params=params)
+
+
+def register_callback_operation(
+    tenant: str, endpoint_id: str, operation: NewCallbackOperation
+) -> WireRequest:
+    """`tenant` here is **not** a tenant lookup: DHA uses it to backfill the endpoint's
+    `facility_fr_code` when that is empty, so pass the FR code."""
+    body: dict[str, object] = {
+        "name": operation.name.strip(),
+        "action": operation.action,
+        "method": operation.method.strip().upper(),
+        "request_content_type": operation.request_content_type,
+    }
+    if operation.path.strip():
+        body["path"] = operation.path.strip()
+    if operation.path_url_override.strip():
+        body["path_url_override"] = operation.path_url_override.strip()
+    if operation.timeout_ms is not None:
+        body["timeout_ms"] = operation.timeout_ms
+    if operation.headers:
+        body["headers"] = dict(operation.headers)
+    return WireRequest("POST", f"/tenants/{tenant}/endpoints/{endpoint_id}/operations", json=body)
+
+
+def read_callback_operation(operation_id: str) -> WireRequest:
+    """Returns inactive operations too — the only way to tell "paused" from "deleted"."""
+    return WireRequest("GET", f"/tenants/endpoints/operations/{operation_id}")
+
+
+def update_callback_operation(operation_id: str, changes: CallbackOperationUpdate) -> WireRequest:
+    body: dict[str, object] = {}
+    if changes.name is not None:
+        body["name"] = changes.name
+    if changes.action is not None:
+        body["action"] = changes.action
+    if changes.method is not None:
+        body["method"] = changes.method.strip().upper()
+    if changes.path is not None:
+        body["path"] = changes.path
+    if changes.path_url_override is not None:
+        body["path_url_override"] = changes.path_url_override
+    if changes.request_content_type is not None:
+        body["request_content_type"] = changes.request_content_type
+    if changes.timeout_ms is not None:
+        body["timeout_ms"] = changes.timeout_ms
+    if changes.headers is not None:
+        body["headers"] = dict(changes.headers)
+    if changes.is_active is not None:
+        body["is_active"] = changes.is_active
+    return WireRequest("PATCH", f"/tenants/endpoints/operations/{operation_id}", json=body)
+
+
+def delete_callback_operation(operation_id: str) -> WireRequest:
+    """Leaves the endpoint standing; only this operation's deliveries stop."""
+    return WireRequest("DELETE", f"/tenants/endpoints/operations/{operation_id}")

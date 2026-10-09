@@ -19,6 +19,7 @@ from sha_claim.adapters.wire.schemas.benefits import (
     SubBenefitWire,
     UtilizationWire,
 )
+from sha_claim.adapters.wire.schemas.callbacks import CallbackEndpointWire, CallbackOperationWire
 from sha_claim.adapters.wire.schemas.claim import (
     ClaimAttachmentWire,
     ClaimDiagnosisWire,
@@ -53,6 +54,13 @@ from sha_claim.domain.benefits import (
     RequiredClaimDocument,
     SubBenefit,
     UtilizationBalance,
+)
+from sha_claim.domain.callbacks import (
+    CallbackAuthType,
+    CallbackEndpoint,
+    CallbackEntityType,
+    CallbackEnvironment,
+    CallbackOperation,
 )
 from sha_claim.domain.claim import (
     ClaimAttachment,
@@ -824,5 +832,39 @@ def to_health_worker(w: HealthWorkerWire) -> HealthWorker:
         regulator=w.regulator,
         status=w.status,
         specialty=w.specialty,
+        extra=w.unmodelled(),
+    )
+
+
+def to_callback_endpoint(w: CallbackEndpointWire) -> CallbackEndpoint:
+    """DHA returns the id as `endpoint_id` on create and `id` on some listings; take whichever came."""
+    return CallbackEndpoint(
+        endpoint_id=w.endpoint_id or w.id,
+        name=w.name,
+        base_url=w.base_url,
+        entity_type=CallbackEntityType(w.entity_type) if w.entity_type else None,
+        environment=CallbackEnvironment(w.environment) if w.environment else None,
+        auth_type=CallbackAuthType(w.auth_type) if w.auth_type else None,
+        is_active=w.is_active,
+        facility_fr_code=w.facility_fr_code,
+        tenant_code=w.tenant_code,
+        timeout_ms=w.timeout_ms,
+        headers=dict(w.headers),
+        extra=w.unmodelled(),
+    )
+
+
+def to_callback_operation(w: CallbackOperationWire) -> CallbackOperation:
+    return CallbackOperation(
+        operation_id=w.operation_id or w.id,
+        name=w.name,
+        action=w.action,
+        method=w.method.upper(),
+        path=w.path,
+        path_url_override=w.path_url_override,
+        is_active=w.is_active,
+        request_content_type=w.request_content_type,
+        timeout_ms=w.timeout_ms,
+        headers=dict(w.headers),
         extra=w.unmodelled(),
     )

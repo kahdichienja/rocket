@@ -48,11 +48,17 @@ class ProtocolCode(Identifier):
 
 
 class RegulationBody(StrEnum):
-    """Professional regulator that issued a practitioner's registration."""
+    """Professional regulator that issued a practitioner's registration.
+
+    DHA's four. `PPB` — the Pharmacy and Poisons Board — was missing, which left no way to name a
+    pharmacist as the practitioner on a prescription or a dispense, the one place they are most likely
+    to be the practitioner.
+    """
 
     KMPDC = "KMPDC"
     COC = "COC"
     NCK = "NCK"
+    PPB = "PPB"
 
 
 class DocumentType(StrEnum):

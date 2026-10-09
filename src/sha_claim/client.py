@@ -12,6 +12,7 @@ from typing import Any, Self
 import httpx
 
 from sha_claim.adapters.wire.http_gateways import (
+    HttpCallbackGateway,
     HttpConsentGateway,
     HttpEligibilityGateway,
     HttpEmergencyGateway,
@@ -31,6 +32,15 @@ from sha_claim.domain.benefits import (
     InterventionCoverage,
     SubBenefit,
     UtilizationBalance,
+)
+from sha_claim.domain.callbacks import (
+    CallbackEndpoint,
+    CallbackEndpointUpdate,
+    CallbackEntityType,
+    CallbackOperation,
+    CallbackOperationUpdate,
+    NewCallbackEndpoint,
+    NewCallbackOperation,
 )
 from sha_claim.domain.claim import PayerClaimRecord
 from sha_claim.domain.codes import InterventionCode
@@ -587,6 +597,86 @@ class ShrResource:
         return await self._gateway.resource_labels(resource_name, code)
 
 
+class CallbacksResource:
+    """Where the HIE should deliver status changes — the one API that configures DHA to call us.
+
+    `register` does both halves in one go, because an endpoint without an operation is registered,
+    returns 201, and then silently delivers nothing — the single easiest way to lose a day. Call the
+    individual methods if you need them apart.
+    """
+
+    def __init__(self, gateway: HttpCallbackGateway) -> None:
+        self._gateway = gateway
+
+    async def endpoints(
+        self, tenant: str, entity_type: CallbackEntityType | None = None
+    ) -> tuple[CallbackEndpoint, ...]:
+        """`GET /tenants/{tenant}/endpoints`. **Paused endpoints are omitted** — use `operation()` to
+        tell "paused" from "never registered". A tenant *code* returns an empty list where the tenant
+        *id* returns rows."""
+        return await self._gateway.list_endpoints(tenant, entity_type)
+
+    async def register(
+        self,
+        tenant: str,
+        endpoint: NewCallbackEndpoint,
+        operation: NewCallbackOperation | None = None,
+    ) -> tuple[CallbackEndpoint, CallbackOperation | None]:
+        """Register an endpoint and, unless told otherwise, the `status_changed` operation it needs.
+
+        `tenant` should be the facility FR code: on the operation call DHA uses that path segment to
+        backfill the endpoint's `facility_fr_code` when it is empty.
+        """
+        created = await self._gateway.register_endpoint(tenant, endpoint)
+        if operation is None:
+            return created, None
+        attached = await self._gateway.register_operation(tenant, created.endpoint_id, operation)
+        return created, attached
+
+    async def update_endpoint(self, endpoint_id: str, changes: CallbackEndpointUpdate) -> CallbackEndpoint:
+        """`PATCH`. An empty change set is a 400 from DHA, so it is refused here instead."""
+        if not changes.has_changes:
+            raise RequestValidationError([Violation("changes", "nothing to update")])
+        return await self._gateway.update_endpoint(endpoint_id, changes)
+
+    async def pause_endpoint(self, endpoint_id: str) -> CallbackEndpoint:
+        """Stop delivery without deleting. Reversible, unlike `delete_endpoint`."""
+        return await self._gateway.update_endpoint(endpoint_id, CallbackEndpointUpdate(is_active=False))
+
+    async def resume_endpoint(self, endpoint_id: str) -> CallbackEndpoint:
+        return await self._gateway.update_endpoint(endpoint_id, CallbackEndpointUpdate(is_active=True))
+
+    async def delete_endpoint(self, endpoint_id: str) -> None:
+        """Takes every operation under it as well. Prefer `pause_endpoint` for anything temporary."""
+        await self._gateway.delete_endpoint(endpoint_id)
+
+    async def operations(
+        self, tenant: str, endpoint_id: str, action: str = ""
+    ) -> tuple[CallbackOperation, ...]:
+        """Only *active* operations. A missing one may be paused rather than absent — `operation()` says."""
+        return await self._gateway.list_operations(tenant, endpoint_id, action)
+
+    async def add_operation(
+        self, tenant: str, endpoint_id: str, operation: NewCallbackOperation
+    ) -> CallbackOperation:
+        return await self._gateway.register_operation(tenant, endpoint_id, operation)
+
+    async def operation(self, operation_id: str) -> CallbackOperation:
+        """`GET` one. Returns inactive ones too, which is what makes it the way to check for a pause."""
+        return await self._gateway.read_operation(operation_id)
+
+    async def update_operation(
+        self, operation_id: str, changes: CallbackOperationUpdate
+    ) -> CallbackOperation:
+        if not changes.has_changes:
+            raise RequestValidationError([Violation("changes", "nothing to update")])
+        return await self._gateway.update_operation(operation_id, changes)
+
+    async def delete_operation(self, operation_id: str) -> None:
+        """Leaves the endpoint standing."""
+        await self._gateway.delete_operation(operation_id)
+
+
 class FacilitiesResource:
     """The Facility Registry — naming a facility that is **not** us.
 
@@ -682,6 +772,7 @@ class AsyncSHAClient:
         self.shr = ShrResource(HttpShrGateway(self._transport))
         self.facilities = FacilitiesResource(HttpFacilityRegistryGateway(self._transport))
         self.health_workers = HealthWorkersResource(HttpHealthWorkerGateway(self._transport))
+        self.callbacks = CallbacksResource(HttpCallbackGateway(self._transport))
 
     @classmethod
     def from_env(cls, *, on_event: EventHook | None = None) -> Self:

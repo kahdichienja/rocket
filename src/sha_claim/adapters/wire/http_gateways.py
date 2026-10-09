@@ -18,6 +18,7 @@ from sha_claim.adapters.wire.schemas.benefits import (
     SubBenefitWire,
     UtilizationWire,
 )
+from sha_claim.adapters.wire.schemas.callbacks import CallbackEndpointWire, CallbackOperationWire
 from sha_claim.adapters.wire.schemas.claim import (
     ClaimAttachmentWire,
     ClaimDiagnosisWire,
@@ -55,6 +56,15 @@ from sha_claim.domain.benefits import (
     InterventionCoverage,
     SubBenefit,
     UtilizationBalance,
+)
+from sha_claim.domain.callbacks import (
+    CallbackEndpoint,
+    CallbackEndpointUpdate,
+    CallbackEntityType,
+    CallbackOperation,
+    CallbackOperationUpdate,
+    NewCallbackEndpoint,
+    NewCallbackOperation,
 )
 from sha_claim.domain.claim import (
     ClaimAttachment,
@@ -727,3 +737,84 @@ class HttpHealthWorkerGateway:
         if not isinstance(body, Mapping) or not body:
             return None
         return mappers.to_health_worker(HealthWorkerWire.model_validate(body))
+
+
+class HttpCallbackGateway:
+    """Status-callback registration — `/tenants/.../endpoints` and their operations.
+
+    The one part of the API that configures DHA to call *us*. Listings come back as a bare JSON array
+    here, not the `Page` envelope the rest of the API uses, and both shapes are tolerated because a
+    middleware that changed once can change again.
+    """
+
+    def __init__(self, transport: Transport) -> None:
+        self._transport = transport
+
+    @staticmethod
+    def _rows(response: WireResponse) -> list[Any]:
+        raise_for_status(response)
+        try:
+            payload: Any = response.json()
+        except ValueError as exc:
+            raise UnexpectedResponseError(f"callback listing: {exc}") from exc
+        if isinstance(payload, list):
+            return payload
+        if isinstance(payload, Mapping):
+            # `{results: [...]}` (the Page envelope) or `{data: [...]}` (what delete returns).
+            for key in ("results", "data", "endpoints", "operations"):
+                value = payload.get(key)
+                if isinstance(value, list):
+                    return value
+        raise UnexpectedResponseError(f"callback listing: expected a list, got {type(payload).__name__}")
+
+    async def list_endpoints(
+        self, tenant: str, entity_type: CallbackEntityType | None = None
+    ) -> tuple[CallbackEndpoint, ...]:
+        response = await self._transport.send(
+            requests.list_callback_endpoints(tenant, entity_type.value if entity_type else "")
+        )
+        return tuple(
+            mappers.to_callback_endpoint(CallbackEndpointWire.model_validate(row))
+            for row in self._rows(response)
+        )
+
+    async def register_endpoint(self, tenant: str, endpoint: NewCallbackEndpoint) -> CallbackEndpoint:
+        response = await self._transport.send(requests.register_callback_endpoint(tenant, endpoint))
+        return mappers.to_callback_endpoint(parse_as(CallbackEndpointWire, response))
+
+    async def update_endpoint(self, endpoint_id: str, changes: CallbackEndpointUpdate) -> CallbackEndpoint:
+        response = await self._transport.send(requests.update_callback_endpoint(endpoint_id, changes))
+        return mappers.to_callback_endpoint(parse_as(CallbackEndpointWire, response))
+
+    async def delete_endpoint(self, endpoint_id: str) -> None:
+        raise_for_status(await self._transport.send(requests.delete_callback_endpoint(endpoint_id)))
+
+    async def list_operations(
+        self, tenant: str, endpoint_id: str, action: str = ""
+    ) -> tuple[CallbackOperation, ...]:
+        response = await self._transport.send(requests.list_callback_operations(tenant, endpoint_id, action))
+        return tuple(
+            mappers.to_callback_operation(CallbackOperationWire.model_validate(row))
+            for row in self._rows(response)
+        )
+
+    async def register_operation(
+        self, tenant: str, endpoint_id: str, operation: NewCallbackOperation
+    ) -> CallbackOperation:
+        response = await self._transport.send(
+            requests.register_callback_operation(tenant, endpoint_id, operation)
+        )
+        return mappers.to_callback_operation(parse_as(CallbackOperationWire, response))
+
+    async def read_operation(self, operation_id: str) -> CallbackOperation:
+        response = await self._transport.send(requests.read_callback_operation(operation_id))
+        return mappers.to_callback_operation(parse_as(CallbackOperationWire, response))
+
+    async def update_operation(
+        self, operation_id: str, changes: CallbackOperationUpdate
+    ) -> CallbackOperation:
+        response = await self._transport.send(requests.update_callback_operation(operation_id, changes))
+        return mappers.to_callback_operation(parse_as(CallbackOperationWire, response))
+
+    async def delete_operation(self, operation_id: str) -> None:
+        raise_for_status(await self._transport.send(requests.delete_callback_operation(operation_id)))

@@ -2,6 +2,43 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.35] — 2026-10-09
+
+### Added
+- **Status callbacks — `sha.callbacks`.** DHA now publishes a push channel, which overturns the premise
+  the tracking design was built on. The certification notes and NaCare's design doc both say "the HIE API
+  has no push/webhook; tracking is poll-based"; that was true when written and is not any more. All nine
+  management operations are here: list/register/update/delete an endpoint, and list/register/read/update/
+  delete its operations.
+
+  `register()` does both halves at once, because an endpoint without an operation returns 201 and then
+  delivers nothing — the easiest way to lose a day to this API. Three other traps are refused before the
+  call rather than by DHA: a `base_url` that is not absolute (registers cleanly, never delivers), an
+  `auth_type` other than `none` without the `secret_ref` the HIE issues out of band, and `DELETE` as a
+  delivery method (accepted at registration, fails at delivery). `prod` is not `production`, and
+  `CallbackEnvironment` reports it as unknown rather than sending it.
+
+  Listings come back as a **bare JSON array** here, not the `{results: […]}` envelope the rest of the API
+  uses; both are tolerated. Paused endpoints and operations are omitted from listings, so
+  `callbacks.operation(id)` is the only way to tell "paused" from "never registered" — `pause_endpoint`
+  and `resume_endpoint` wrap that.
+
+  **What is deliberately not modelled is the callback payload.** DHA specifies the management API in full
+  and says nothing about what it delivers, nor which status values it carries, nor how a callback is
+  signed. Turning an undocumented body into claim state is the caller's decision; the safe reading of a
+  callback is "something changed, go and ask".
+
+- `PPB` (Pharmacy and Poisons Board) on `RegulationBody`. DHA lists four regulators and this one was
+  missing, leaving no way to name a pharmacist as the practitioner on a prescription or a dispense — the
+  one place they are most likely to be it.
+
+### Fixed
+- **The dispenser's identification type is sent as chosen.** `POST /prescriptions/dispense` refuses
+  `registration_number`, and this rewrote it to `National ID` in flight — so a dispense went through with
+  a practitioner's licence number filed as their national id, on the record of who handed medicine to a
+  patient, and nothing said so. The caller's choice now reaches DHA unchanged; if DHA still refuses it,
+  it says so, and a refusal naming the field beats a record that is quietly wrong.
+
 ## [0.1.34] — 2026-10-09
 
 ### Fixed

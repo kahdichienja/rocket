@@ -269,9 +269,24 @@ class ClaimSession:
     ) -> VirtualClaim:
         """`POST /claims/submit` — final. Attempted once; on ambiguity raises SubmissionOutcomeUnknownError.
 
-        Observed on UAT for every service type: the server also requires `discharge_reason`, the OTP from
-        `send_discharge_otp()`, and a doctor on the claim (`add_doctor`). Pass them here.
+        **Not for INPATIENT.** DHA refuses those here — "Kindly note claim of service type INPATIENT
+        cannot be submitted, use appropriate route for the claim" — and dispatches them through
+        `discharge()` instead, which is the inpatient submit. Outpatient, capitation and emergency claims
+        come this way.
+
+        Observed on UAT: the server also requires `discharge_reason`, the OTP from `send_discharge_otp()`,
+        and a doctor on the claim (`add_doctor`). Pass them here.
         """
+        if self.claim is not None and self.claim.service_type == ServiceType.INPATIENT:
+            raise RequestValidationError(
+                [
+                    Violation(
+                        "service_type",
+                        "an INPATIENT claim is dispatched through discharge(), which submits it; DHA "
+                        "refuses this route for that service type",
+                    )
+                ]
+            )
         submission = Submission(
             invoice_number=InvoiceNumber.of(invoice_number) if invoice_number is not None else None,
             discharge_reason=discharge_reason,
@@ -323,18 +338,19 @@ class ClaimSession:
         otp: Otp | str,
         discharged_at: datetime | None = None,
     ) -> VirtualClaim:
-        """`POST /claims/discharge` — ends the visit. **Required before `submit` for every service type** (observed on UAT).
+        """`POST /claims/discharge` — **the inpatient submit.** Final: nothing can be changed after it.
 
-        **For inpatient this is also the submit.** DHA's published per-diem scenario states that discharge
-        "both discharges the patient and simultaneously submits the claim to SHA. There is no separate
-        submit step for inpatient claims", and its call sequence ends here — no `/claims/submit` appears in
-        it. That contradicts what UAT was observed to require (discharge, then `submit`, for every service
-        type, which is why `submit` still exists and is still called). Until the two agree, treat a
-        `submit` after an inpatient `discharge` as possibly redundant rather than load-bearing: if it comes
-        back refused with the claim already submitted, `preview()` is what settles which of the two filed it.
+        This is the whole dispatch for an INPATIENT claim, not a step before one. DHA's per-diem scenario
+        says discharge "both discharges the patient and simultaneously submits the claim to SHA. There is
+        no separate submit step for inpatient claims", and the server enforces it from the other side —
+        `submit()` on an inpatient claim is refused with "claim of service type INPATIENT cannot be
+        submitted, use appropriate route for the claim". So the service type picks the call: inpatient
+        here, everything else through `submit()`. Never both.
 
-        Run `preview()` first either way — it is the only check that the claim is complete, and after this
-        call nothing can be changed.
+        (An earlier reading of UAT had this as a step *before* `submit` for every service type. The
+        rejection above settles it.)
+
+        Run `preview()` first — it is the only check that the claim is complete, and this call is final.
 
         `discharged_at` defaults to now (UTC); if given it must be timezone-aware.
         """

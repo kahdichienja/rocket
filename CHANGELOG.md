@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.34] — 2026-10-09
+
+### Fixed
+- **`discharge()` is the INPATIENT submit, and `submit()` now refuses that service type.** DHA settles a
+  question 0.1.33 could only document:
+
+      400 failed to perform requested claim operation: Kindly note claim of service type INPATIENT
+      cannot be submitted, use appropriate route for the claim.
+
+  Its dispatch guide agrees — "inpatient claims are dispatched through `POST /claims/discharge` instead" —
+  as does the per-diem scenario, whose call sequence contains no `/claims/submit` at all. The earlier
+  reading, that UAT wanted discharge *and then* submit for every service type, was wrong for inpatient.
+
+  So the service type picks the call and never both: inpatient through `discharge()`, everything else
+  through `submit()`. `submit()` checks the held snapshot and raises `RequestValidationError` rather than
+  spending a call DHA will reject; a session with no snapshot yet is left to the server, as elsewhere.
+
+  Callers that previously discharged *and then* submitted an inpatient claim should drop the submit — it
+  was never reaching SHA. Note that discharge is final: it submits, so nothing on the claim can change
+  afterwards, and `preview()` beforehand is the only check that the claim is complete.
+
 ## [0.1.33] — 2026-10-09
 
 ### Added

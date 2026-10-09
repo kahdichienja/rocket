@@ -11,7 +11,7 @@ import pytest
 
 from sha_claim.domain.claim import ClaimIntervention, ClaimLine, Invoice, VirtualClaim
 from sha_claim.domain.codes import InterventionCode
-from sha_claim.domain.enums import ClaimWorkflowState, PaymentMechanism
+from sha_claim.domain.enums import ClaimWorkflowState, PaymentMechanism, ServiceType
 from sha_claim.domain.identifiers import ConsentToken, LineGuid
 from sha_claim.domain.money import Money
 from sha_claim.errors import RequestValidationError
@@ -192,3 +192,29 @@ def test_switch_across_scheme_families_is_refused_before_the_call() -> None:
     with pytest.raises(RequestValidationError) as caught:
         asyncio.run(session.switch_intervention("SHA-03-001", "PMF-03-002", retain_bill_items=False))
     assert "will not combine" in str(caught.value)
+
+
+# ── submit refuses the service type DHA refuses ──
+
+
+def _session_with(service_type: ServiceType | None) -> ClaimSession:
+    session = ClaimSession.__new__(ClaimSession)
+    session.consent_token = ConsentToken("CR1-TOKEN12345")
+    session.claim = claim(service_type=service_type)
+    return session
+
+
+def test_submit_refuses_an_inpatient_claim_before_calling() -> None:
+    """DHA: "claim of service type INPATIENT cannot be submitted, use appropriate route for the claim"."""
+    with pytest.raises(RequestValidationError) as caught:
+        asyncio.run(_session_with(ServiceType.INPATIENT).submit("INV-1"))
+    assert "discharge()" in str(caught.value)
+
+
+def test_submit_leaves_every_other_service_type_to_the_server() -> None:
+    """No snapshot, or any other type, is not this check's business — only INPATIENT is refused here."""
+    for service_type in (ServiceType.OUTPATIENT, ServiceType.CAPITATION, ServiceType.EMERGENCY, None):
+        session = _session_with(service_type)
+        with pytest.raises(AttributeError):
+            # Falls through the guard and reaches the gateway, which this bare session does not have.
+            asyncio.run(session.submit("INV-1"))

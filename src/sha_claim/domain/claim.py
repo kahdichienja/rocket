@@ -425,11 +425,8 @@ class PayerClaimRecord:
 class Discharge:
     """Command for `POST /claims/discharge`. The OTP comes from `send_discharge_otp`.
 
-    UAT requires discharge *before* submit for every service type, and wants an RFC 3339 datetime
-    (`2026-09-20T18:50:00+03:00`), not a bare date.
-
-    For inpatient, DHA's published scenario says this call submits the claim as well and that no separate
-    submit step exists — see `ClaimSession.discharge` for the discrepancy and how to tell which call filed.
+    This is how an INPATIENT claim is submitted — `POST /claims/submit` refuses that service type
+    outright. Wants an RFC 3339 datetime (`2026-09-20T18:50:00+03:00`), not a bare date.
     """
 
     discharged_at: datetime

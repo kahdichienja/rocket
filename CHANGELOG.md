@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.37] — 2026-10-10
+
+### Added
+- **`eligibility.interventions(patient, sub_benefit_code="", *, code="")`.** Both filters are optional
+  in DHA's API and only one was ever sent. `code` fetches a single intervention's coverage without
+  knowing its sub-benefit — which is the only route to `required_preauth_document_types` for a caller
+  holding a code off a claim, where the sub-benefit is not carried.
+
+  That list is published on this lookup and nowhere else, so without it a pre-authorisation is filed
+  blind. UAT, 2026-10-10, filing one for SHA-06-022 (Chemotherapy medicines): *"Cannot create
+  preauthorisation, missing the following required documents histopathology results, prescription,
+  treatment plan"* — five documents SHA names on the coverage record, after the form had been filled in.
+
+- **`InterventionCoverage.optional_preauth_document_types`.** Published beside the required list and
+  previously dropped. Kept apart from it on purpose: shown as one list, five documents look mandatory
+  when two are not, and a desk chases paper it never needed.
+
 ## [0.1.36] — 2026-10-10
 
 ### Fixed

@@ -38,6 +38,7 @@ class InterventionWire(WireModel):
     number_of_doctors_required: int = 0
     #: What SHA wants attached — stated per intervention, at selection time, before any visit exists.
     required_preauth_document_types: list[str] = Field(default_factory=list)
+    optional_preauth_document_types: list[str] = Field(default_factory=list)
     #: A *different* list, for the claim rather than the pre-auth: `{key, label, anyOf}` entries.
     required_claim_documents: list[dict[str, Any]] = Field(default_factory=list)
     #: Which specialised pre-auth form SHA expects. Stated outright, so nothing has to be inferred.

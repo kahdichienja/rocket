@@ -47,6 +47,12 @@ class InterventionCoverage:
     fund: str = ""
     sub_benefit_code: str = ""
     required_preauth_document_types: tuple[str, ...] = ()
+    optional_preauth_document_types: tuple[str, ...] = ()
+    """What SHA will also look at, as distinct from what it refuses the pre-auth without.
+
+    Published beside the required list and worth keeping apart from it: a screen that shows them as one
+    list makes five documents look mandatory when two are not, and a desk chases paper it never needed.
+    """
     """What SHA wants attached to the pre-auth — known at selection time, before a visit exists.
 
     Worth surfacing where the service is chosen rather than where the pre-auth is filed: the documents are

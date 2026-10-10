@@ -182,3 +182,57 @@ class TestWhenAClaimMayBeCreated:
         """
         assert self._auth(overallPreauthFinalised=False).awaiting_elective_preauth is False
         assert self._auth(needsPreauth=True, overallPreauthFinalised=False).awaiting_elective_preauth is False
+
+
+class TestReachingOneInterventionsCoverage:
+    """`required_preauth_document_types` is published on the coverage lookup and nowhere else.
+
+    A caller holding only an intervention code — off a claim, where the sub-benefit is not carried —
+    could not read it, so a chemotherapy pre-auth was filed blind and refused: *"missing the following
+    required documents histopathology results, prescription, treatment plan"* (UAT, 2026-10-10,
+    SHA-06-022). Both filters on this endpoint are optional; `code` is the one that was never sent.
+    """
+
+    def test_code_alone_is_a_valid_query(self) -> None:
+        from sha_claim.adapters.wire import requests
+        from sha_claim.domain.identifiers import PatientId
+
+        r = requests.interventions(PatientId("CR-2026-000502"), code="SHA-06-022")
+        assert r.params == {"patient_id": "CR-2026-000502", "code": "SHA-06-022"}
+
+    def test_an_empty_filter_is_omitted_rather_than_sent_blank(self) -> None:
+        """A blank `sub_benefit_code` is read as "match nothing", which returns an empty list."""
+        from sha_claim.adapters.wire import requests
+        from sha_claim.domain.identifiers import PatientId
+
+        assert requests.interventions(PatientId("CR-2026-000502")).params == {"patient_id": "CR-2026-000502"}
+
+    def test_optional_documents_are_kept_apart_from_required_ones(self) -> None:
+        """Five documents of which two are optional is not the same as five required ones."""
+        from sha_claim.adapters.wire.mappers import to_intervention_coverage
+        from sha_claim.adapters.wire.schemas.benefits import InterventionWire
+
+        coverage = to_intervention_coverage(
+            InterventionWire.model_validate(
+                {
+                    "code": "SHA-06-022",
+                    "name": "Chemotherapy medicines",
+                    "requiredPreauthDocumentTypes": [
+                        "HISTOPATHOLOGY_RESULTS",
+                        "MEDICAL_REPORT",
+                        "PREAUTH_FORM",
+                        "PRESCRIPTION",
+                        "TREATMENT_PLAN",
+                    ],
+                    "optionalPreauthDocumentTypes": ["IMAGING_RESULT", "LAB_RESULTS"],
+                }
+            )
+        )
+        assert coverage.required_preauth_document_types == (
+            "HISTOPATHOLOGY_RESULTS",
+            "MEDICAL_REPORT",
+            "PREAUTH_FORM",
+            "PRESCRIPTION",
+            "TREATMENT_PLAN",
+        )
+        assert coverage.optional_preauth_document_types == ("IMAGING_RESULT", "LAB_RESULTS")

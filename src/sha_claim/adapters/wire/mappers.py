@@ -159,6 +159,7 @@ def to_intervention_coverage(w: InterventionWire) -> InterventionCoverage:
         fund=w.fund,
         sub_benefit_code=w.sub_benefit_code,
         required_preauth_document_types=tuple(w.required_preauth_document_types),
+        optional_preauth_document_types=tuple(w.optional_preauth_document_types),
         required_claim_documents=tuple(
             RequiredClaimDocument(
                 key=str(d.get("key", "")),

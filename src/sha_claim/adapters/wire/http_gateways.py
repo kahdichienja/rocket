@@ -173,9 +173,9 @@ class HttpEligibilityGateway:
         return tuple(mappers.to_sub_benefit(s) for s in page.results)
 
     async def interventions(
-        self, patient: PatientId, sub_benefit_code: str
+        self, patient: PatientId, sub_benefit_code: str = "", *, code: str = ""
     ) -> tuple[InterventionCoverage, ...]:
-        response = await self._transport.send(requests.interventions(patient, sub_benefit_code))
+        response = await self._transport.send(requests.interventions(patient, sub_benefit_code, code=code))
         page = parse_as(Page[InterventionWire], response)
         return tuple(mappers.to_intervention_coverage(i) for i in page.results)
 

@@ -163,10 +163,18 @@ class EligibilityResource:
         return await self._gateway.sub_benefits(PatientId.of(patient))
 
     async def interventions(
-        self, patient: PatientId | str, sub_benefit_code: str
+        self, patient: PatientId | str, sub_benefit_code: str = "", *, code: InterventionCode | str = ""
     ) -> tuple[InterventionCoverage, ...]:
-        """`GET /patients/benefits/interventions` — billable interventions under a sub-benefit, with tariffs and preauth flags."""
-        return await self._gateway.interventions(PatientId.of(patient), sub_benefit_code)
+        """`GET /patients/benefits/interventions` — billable interventions, with tariffs and preauth flags.
+
+        Both filters are optional. `code` fetches one intervention's coverage without knowing its
+        sub-benefit, which is how a caller holding only a code — off a claim, where the sub-benefit is
+        not carried — reaches `required_preauth_document_types`. That list is published nowhere else,
+        and without it a pre-auth is filed blind and refused for documents nobody was asked for.
+        """
+        return await self._gateway.interventions(
+            PatientId.of(patient), sub_benefit_code, code=str(code) if code else ""
+        )
 
     async def utilization(
         self, patient: PatientId | str, intervention: InterventionCode | str

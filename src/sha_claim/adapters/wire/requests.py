@@ -75,12 +75,21 @@ def sub_benefits(patient: PatientId) -> WireRequest:
     return WireRequest("GET", "/patients/sub-benefits", params={"patient_id": patient.value})
 
 
-def interventions(patient: PatientId, sub_benefit_code: str) -> WireRequest:
-    return WireRequest(
-        "GET",
-        "/patients/benefits/interventions",
-        params={"patient_id": patient.value, "sub_benefit_code": sub_benefit_code},
-    )
+def interventions(patient: PatientId, sub_benefit_code: str = "", *, code: str = "") -> WireRequest:
+    """`GET /patients/benefits/interventions`.
+
+    Both filters are optional in the API, and `code` is what makes a single intervention's coverage
+    reachable on its own. That matters because the coverage record is the only place DHA publishes
+    `requiredPreauthDocumentTypes`, and a caller holding one intervention code — from a claim, say —
+    does not necessarily know which sub-benefit it sits under. Empty filters are omitted rather than
+    sent blank, which the API reads as "match nothing".
+    """
+    params = {"patient_id": patient.value}
+    if sub_benefit_code:
+        params["sub_benefit_code"] = sub_benefit_code
+    if code:
+        params["code"] = code
+    return WireRequest("GET", "/patients/benefits/interventions", params=params)
 
 
 def authorize(

@@ -30,7 +30,7 @@ class EligibilityGateway(EligibilityCheck, Protocol):
     async def sub_benefits(self, patient: PatientId) -> tuple[SubBenefit, ...]: ...
 
     async def interventions(
-        self, patient: PatientId, sub_benefit_code: str
+        self, patient: PatientId, sub_benefit_code: str = "", *, code: str = ""
     ) -> tuple[InterventionCoverage, ...]: ...
 
     async def utilization(

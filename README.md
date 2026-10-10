@@ -535,6 +535,34 @@ session = sha.claims.resume(saved_token)
 claim = await session.preview()
 ```
 
+### `before_visit(authorization) → ClaimSession`
+
+The pre-visit phase of an **elective** pre-authorisation: approve the operation before the patient
+arrives. **No network call.**
+
+`POST /preauths` takes a `consent_token`, and `POST /claims/authorize` issues one — there does not have
+to be a visit behind it. That is how DHA's elective scenario works, and it is the half of the flow this
+library previously said was impossible.
+
+```python
+auth = await sha.consent.authorize(patient, ServiceType.INPATIENT, [code], otp)
+# auth.status is AUTHORIZED_PENDING_VISIT; auth.awaiting_elective_preauth is True
+
+await sha.claims.before_visit(auth).request_preauth(code, ...)  # PENDING_DOCTOR_APPROVAL
+#   doctor signs       → ACTIVE      (with the payer)
+#   payer approves     → FINALISED   (a claim may now be created)
+#   `sha.claims.before_visit(auth).preauths()` polls that, or `consent.get()` and read
+#   `awaiting_elective_preauth`
+
+# on the day — the SAME patient and the SAME intervention code, which is how SHA links the approval
+session = await sha.claims.open_visit(patient, ServiceType.INPATIENT, [code], auth)
+```
+
+The returned session is for `request_preauth()` and `preauths()` only. There is no claim behind it, so
+`add_line`, `preview`, `submit` and `discharge` are refused by SHA. If the doctor says they never got
+the request, `session.request_doctor_consent(...)` resends it — SHA accepts that only while the pre-auth
+is in `PENDING_DOCTOR_APPROVAL` or draft.
+
 ---
 
 ## 9. `ClaimSession`

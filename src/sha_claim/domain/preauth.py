@@ -291,9 +291,10 @@ class Preauthorization:
     is_elective: bool = False
     """Raised ahead of the visit it is for, and carried into that visit when the patient returns.
 
-    Read-only: SHA sets it. There is no elective endpoint and no elective field on the create request —
-    the published API has 48 endpoints and none of them is one — so a facility cannot ask for this, only
-    recognise it.
+    Read-only: SHA sets it, and there is no elective field on the create request. That does not make the
+    flow unavailable — it is the *timing* that makes a pre-auth elective, not a flag we send. File it in
+    the pre-visit phase, against the token from `POST /claims/authorize` (`ClaimsResource.before_visit`),
+    and SHA marks it elective itself.
     """
     record_id: int | None = None
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)

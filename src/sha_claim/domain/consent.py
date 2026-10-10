@@ -143,9 +143,16 @@ class ElectivePreauth:
 
         Substring-matched, and anything unrecognised is **not** approved: SHA spells approval several ways
         and the cost of reading a pending one as approved is a refused claim after the operation.
+
+        **`FINALISED` is one of those spellings**, and it is the one the elective scenario ends on:
+        `PENDING_DOCTOR_APPROVAL` → `ACTIVE` (doctor signed, with the payer) → `FINALISED` (payer approved,
+        valid for claim creation). It contains no "APPROV", so it read as not approved here — which turned
+        a theatre list with a real approval into one the desk was told to keep waiting for. `ACTIVE` stays
+        unapproved on purpose: the doctor has signed but the payer has not.
         """
         status = self.status.strip().upper()
-        return "APPROV" in status and not any(w in status for w in ("PENDING", "AWAIT", "REQUEST"))
+        granted = any(word in status for word in ("APPROV", "FINALIS", "FINALIZ"))
+        return granted and not any(w in status for w in ("PENDING", "AWAIT", "REQUEST"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,11 +189,15 @@ class Authorization:
     elective_preauth: ElectivePreauth | None = None
     """The earlier approval, summarised by SHA.
 
-    This is the whole of the elective mechanism as the API actually offers it. A pre-auth is always raised
-    against an *open* visit — `POST /preauths` takes a `consent_token` from `POST /claims/visit` — so there
-    is no such thing as raising one before the patient arrives. What makes it elective is that the service
-    is dated later; and when the patient does come back, SHA reports the approval **here**, on the new
-    authorization, rather than anywhere NaCare could have looked it up.
+    How an approval raised before the patient arrived is found again on the day. DHA's elective scenario
+    files the pre-auth in a *pre-visit* phase — `POST /claims/authorize` returns a token, and that token
+    is what `POST /preauths` takes as its `consent_token`; no visit is open yet. The approval is then
+    carried back **here**, on the authorization for the visit itself, rather than anywhere a facility
+    could look it up, provided the same `patient_id` and `intervention_code` are used on the day.
+
+    This module said for a while that a pre-visit pre-auth was impossible, on the grounds that only
+    `/claims/visit` issues a consent token. `/claims/authorize` issues one too. See
+    `ClaimsResource.before_visit`.
     """
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
@@ -218,6 +229,25 @@ class Authorization:
     def capture_url(self) -> str:
         """The eKYC page to send the beneficiary to, or empty on the OTP path."""
         return self.verification.request_url if self.verification else ""
+
+    @property
+    def awaiting_elective_preauth(self) -> bool:
+        """SHA has the patient's consent but is still waiting on the pre-auth before a claim may exist.
+
+        The elective scenario moves the authorization `AUTHORIZED_PENDING_VISIT` → `AUTHORIZED` only once
+        the pre-auth reaches `FINALISED`, and only then "signalling that a claim can now be created".
+        Opening the visit before that files a claim against an approval SHA has not granted.
+
+        **Scoped to `is_elective`, deliberately.** `overall_preauth_finalised` arrives `false` on ordinary
+        authorizations too, and a desk blocked from opening an everyday visit by a flag about a pre-auth
+        nobody raised is a worse failure than the one this prevents. SHA sets `is_elective` itself, so this
+        can only fire on the flow it is about.
+        """
+        if not self.is_elective:
+            return False
+        if self.elective_preauth is not None:
+            return not self.elective_preauth.is_approved
+        return not self.overall_preauth_finalised
 
     @property
     def needs_preauth(self) -> bool:

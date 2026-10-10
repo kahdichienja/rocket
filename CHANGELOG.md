@@ -2,6 +2,37 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.36] — 2026-10-10
+
+### Fixed
+- **`FINALISED` is an approval.** `ElectivePreauth.is_approved` tested for `"APPROV"`, and the state
+  DHA's elective scenario ends on — "payer approved; valid for claim creation" — contains no such
+  substring. An elective pre-auth that SHA had granted therefore read as still pending, which is the
+  worse direction for this particular error: a desk holding a real approval was told to keep waiting,
+  with the operation already booked. `ACTIVE` stays unapproved on purpose; the doctor has signed but the
+  payer has not.
+
+### Added
+- **`claims.before_visit(authorization)` — the pre-visit half of an elective pre-authorisation.**
+
+  This library has said in three places that such a thing cannot exist: *"there is no way to raise a
+  pre-auth before a visit: `POST /preauths` takes a `consent_token`, which only `POST /claims/visit`
+  issues."* The second clause is wrong. `POST /claims/authorize` issues one too, and DHA's elective
+  scenario files the pre-auth against it with no virtual claim in existence — created
+  `PENDING_DOCTOR_APPROVAL`, signed by the doctor into `ACTIVE`, finalised by the payer into
+  `FINALISED`, and only then is the visit opened on the day of the operation.
+
+  The session it returns is for `request_preauth()` and `preauths()` only; there is no claim behind it,
+  so billing calls will be refused by SHA. On the day, open the visit with the **same patient and the
+  same intervention code** — that is how SHA links the approval to the new claim.
+
+- **`Authorization.awaiting_elective_preauth`.** `overall_preauth_finalised` has been mapped off the
+  wire since the beginning and read by nothing. The elective authorization moves
+  `AUTHORIZED_PENDING_VISIT` → `AUTHORIZED` only when the pre-auth is finalised, and only then may a
+  claim be created; this says whether that has happened. Scoped to `is_elective` deliberately — the flag
+  arrives `false` on ordinary authorizations too, and blocking an everyday visit over a pre-auth nobody
+  raised is a worse failure than the one it prevents.
+
 ## [0.1.35] — 2026-10-09
 
 ### Added

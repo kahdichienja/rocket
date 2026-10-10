@@ -514,3 +514,71 @@ async def test_registry_lookup_of_an_unknown_document_is_not_an_error(settings: 
     async with AsyncSHAClient(settings) as sha:
         with pytest.raises(SHAClaimError):
             await sha.registries.find_patient("1000000256")
+
+
+@respx.mock
+async def test_a_preauth_can_be_raised_before_the_visit_exists(settings: SHASettings) -> None:
+    """DHA's elective scenario, pre-visit half: authorize, then file the pre-auth against *that* token.
+
+    The library used to say this was impossible — `POST /preauths` needs a `consent_token` and only
+    `/claims/visit` issues one. `/claims/authorize` issues one as well, which is the whole basis of
+    approving an operation before the patient arrives. The assertion that matters is the last one: the
+    token on the wire is the authorization's, and no visit was opened to get it.
+    """
+    from datetime import UTC, datetime
+
+    from sha_claim.domain.codes import RegulationBody
+    from sha_claim.domain.consent import Otp
+    from sha_claim.domain.enums import ServiceType
+    from sha_claim.domain.practitioner import PractitionerRef
+    from sha_claim.domain.preauth import PreauthItem
+
+    root = settings.api_root
+    respx.post(f"{root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
+    authorize = respx.post(f"{root}/claims/authorize").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "guid": "auth-1",
+                "token": "CR0-ELECTIVE12",
+                "status": "AUTHORIZED_PENDING_VISIT",
+                "isElective": True,
+            },
+        )
+    )
+    visit = respx.post(f"{root}/claims/visit")
+    preauth = respx.post(f"{root}/preauths").mock(
+        return_value=httpx.Response(
+            200, json={"guid": "pre-1", "interventionCode": "SHA-19-118", "status": "PENDING_DOCTOR_APPROVAL"}
+        )
+    )
+
+    async with AsyncSHAClient(settings) as sha:
+        authorization = await sha.consent.authorize(
+            "CR-2026-000235", ServiceType.INPATIENT, ["SHA-19-118"], Otp("123456")
+        )
+        assert authorization.awaiting_elective_preauth is True
+
+        filed = await sha.claims.before_visit(authorization).request_preauth(
+            "SHA-19-118",
+            service_start=datetime(2026, 11, 2, 8, 0, tzinfo=UTC),
+            service_end=datetime(2026, 11, 2, 12, 0, tzinfo=UTC),
+            items=[PreauthItem("SHA-19-118", "Theatre", 1, Money.kes(120000))],
+            diagnoses=["1A00"],
+            doctors=[PractitionerRef.registered("A18412", RegulationBody.KMPDC)],
+            notification_email="theatre@example.org",
+        )
+
+    assert authorize.called and preauth.called
+    assert not visit.called, "the pre-visit phase must not open a visit"
+    assert filed.status == "PENDING_DOCTOR_APPROVAL"
+    assert b'name="consent_token"\r\n\r\nCR0-ELECTIVE12' in preauth.calls[0].request.content
+
+
+async def test_before_visit_refuses_an_authorization_with_no_token(settings: SHASettings) -> None:
+    """Better here than as SHA's generic refusal of an empty `consent_token` three screens later."""
+    async with AsyncSHAClient(settings) as sha:
+        with pytest.raises(ValueError, match="no token"):
+            sha.claims.before_visit("  ")

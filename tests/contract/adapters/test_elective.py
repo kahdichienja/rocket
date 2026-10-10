@@ -1,12 +1,16 @@
 """Elective pre-authorisations, as the API actually offers them.
 
-There is **no elective endpoint**. Across all 48 endpoints DHA publishes there is no way to raise a
-pre-auth before a visit: `POST /preauths` takes a `consent_token`, which only `POST /claims/visit` issues,
-which only an authorised consent produces. `isElective` is read-only on the response, and the approval is
-carried back to the facility on the *later* authorization rather than looked up.
+There is no elective *endpoint* and no elective field on the create request — but there is an elective
+*flow*, and this file used to deny it. The claim was that `POST /preauths` needs a `consent_token` which
+only `POST /claims/visit` issues. `POST /claims/authorize` issues one as well, and DHA's elective scenario
+files the pre-auth against it in a pre-visit phase, with no virtual claim in existence: created
+`PENDING_DOCTOR_APPROVAL`, signed by the doctor into `ACTIVE`, finalised by the payer into `FINALISED`,
+and only then is the visit opened on the day. `ClaimsResource.before_visit` is that path.
 
-So everything here is recognition. These tests exist to stop the two ways of getting that wrong: treating
-an unapproved elective pre-auth as usable, and dressing `countdown` as an expiry nobody has verified.
+What stays true is the recognition half: `isElective` is read-only, and the approval comes back on the
+*later* authorization rather than anywhere it can be looked up. These tests cover both — the flow, and
+the two ways of misreading it: treating an unapproved elective pre-auth as usable, and dressing
+`countdown` as an expiry nobody has verified.
 """
 
 from __future__ import annotations
@@ -125,3 +129,56 @@ class TestCarriedOntoTheNextVisit:
         )
         assert auth.elective_preauth is not None
         assert auth.elective_preauth.is_approved is False
+
+
+class TestTheStatusesTheScenarioEndsOn:
+    """`PENDING_DOCTOR_APPROVAL` → `ACTIVE` → `FINALISED`, and what each one allows."""
+
+    def test_finalised_is_an_approval(self) -> None:
+        """The state DHA's elective scenario finishes on: "payer approved; valid for claim creation".
+
+        It contains no "APPROV", so it read as pending — and a desk holding a real approval was told to
+        keep waiting, with the operation already booked.
+        """
+        for spelling in ("FINALISED", "FINALIZED", "Finalised"):
+            auth = to_authorization(
+                AuthorizationWire.model_validate({"guid": "a", "electivePreauth": {"status": spelling}})
+            )
+            assert auth.elective_preauth is not None
+            assert auth.elective_preauth.is_approved is True, spelling
+
+    def test_active_is_not_an_approval(self) -> None:
+        """The doctor has signed; the payer has not. A claim billed here is billed against nothing."""
+        auth = to_authorization(
+            AuthorizationWire.model_validate({"guid": "a", "electivePreauth": {"status": "ACTIVE"}})
+        )
+        assert auth.elective_preauth is not None
+        assert auth.elective_preauth.is_approved is False
+
+
+class TestWhenAClaimMayBeCreated:
+    """`AUTHORIZED_PENDING_VISIT` → `AUTHORIZED` happens when the pre-auth is finalised, not before."""
+
+    def _auth(self, **over: object):  # type: ignore[no-untyped-def]
+        return to_authorization(AuthorizationWire.model_validate({"guid": "a", **over}))
+
+    def test_an_elective_authorization_waits_for_its_preauth(self) -> None:
+        auth = self._auth(isElective=True, electivePreauth={"status": "PENDING_DOCTOR_APPROVAL"})
+        assert auth.awaiting_elective_preauth is True
+
+    def test_and_stops_waiting_once_it_is_finalised(self) -> None:
+        auth = self._auth(isElective=True, electivePreauth={"status": "FINALISED"})
+        assert auth.awaiting_elective_preauth is False
+
+    def test_an_elective_authorization_with_no_summary_falls_back_to_the_flag(self) -> None:
+        assert self._auth(isElective=True, overallPreauthFinalised=False).awaiting_elective_preauth is True
+        assert self._auth(isElective=True, overallPreauthFinalised=True).awaiting_elective_preauth is False
+
+    def test_an_ordinary_visit_is_never_held_up_by_this(self) -> None:
+        """`overallPreauthFinalised` is false on ordinary authorizations too.
+
+        Blocking an everyday visit on a flag about a pre-auth nobody raised is a worse failure than the
+        one this property exists to prevent, so it fires only where SHA itself said elective.
+        """
+        assert self._auth(overallPreauthFinalised=False).awaiting_elective_preauth is False
+        assert self._auth(needsPreauth=True, overallPreauthFinalised=False).awaiting_elective_preauth is False

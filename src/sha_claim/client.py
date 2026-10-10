@@ -327,6 +327,34 @@ class ClaimsResource:
         """Re-attach to an existing virtual claim (e.g. from a token persisted by NaCare). No network call."""
         return ClaimSession(self._gateways, ConsentToken.of(consent_token))
 
+    def before_visit(self, authorization: Authorization | ConsentToken | str) -> ClaimSession:
+        """The pre-visit phase of an elective pre-authorisation. No network call.
+
+        An elective operation is approved **before** the patient arrives: consent is captured, the pre-auth
+        is filed and the payer finalises it, and only then is the visit opened on the day. DHA's elective
+        scenario does this with the token `POST /claims/authorize` returns — the same token `POST /preauths`
+        takes as its `consent_token`, with no virtual claim behind it.
+
+        This library used to say that could not be done, on the grounds that only `/claims/visit` issues a
+        consent token. It does not: `/claims/authorize` issues one too, and the whole pre-visit half of the
+        elective flow hangs off that one fact.
+
+        The session it returns is for `request_preauth()` and `preauths()` only. There is no claim yet, so
+        `add_line`, `preview`, `submit` and `discharge` will be refused by SHA — on the day, open the visit
+        with `open_visit()` and bill against *that* session, using the **same patient and the same
+        intervention code**, which is how SHA links the approval to the new claim.
+
+            auth = await sha.consent.authorize(patient, ServiceType.INPATIENT, [code], otp)
+            pre = sha.claims.before_visit(auth)
+            await pre.request_preauth(code, ...)            # PENDING_DOCTOR_APPROVAL
+            ...                                             # doctor signs → ACTIVE → payer → FINALISED
+            session = await sha.claims.open_visit(patient, ServiceType.INPATIENT, [code], auth)
+        """
+        token = authorization.token if isinstance(authorization, Authorization) else authorization
+        if not str(token).strip():
+            raise ValueError("authorization has no token to raise a pre-authorisation against")
+        return ClaimSession(self._gateways, ConsentToken.of(token))
+
     async def payer_status(self, provider_claim_no: str) -> tuple[PayerClaimRecord, ...]:
         """`GET /claims/preview/payer` — how the payer sees a submitted claim, **without a consent token**.
 

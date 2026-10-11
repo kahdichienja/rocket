@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.39] — 2026-10-11
+
+### Added
+- **`InterventionCoverage.applicable_document_types` and `.optional_document_types`.** SHA publishes
+  three document lists per intervention and only one was modelled.
+
+  `requiredClaimDocuments` is what a claim is refused without — that one was already here.
+  `applicableDocumentTypes` is everything SHA will *accept*: wider than required, narrower than the
+  31-value vocabulary, and a type outside it is refused by name. `optionalDocumentTypes` is what it
+  will look at without insisting on.
+
+  Both sat in `extra` and were dropped, so a desk asking "what else can I send?" had no answer, and
+  one sending something reasonable got a refusal naming a field. Kept apart from the required list on
+  purpose: shown together, five documents look mandatory when two are not. `applicableDocumentTypes`
+  is deduplicated — DHA repeats entries in it (`CLAIM_FORM` twice on SHA-06-022).
+
 ## [0.1.38] — 2026-10-11
 
 ### Added

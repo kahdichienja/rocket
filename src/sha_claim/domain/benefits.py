@@ -46,6 +46,15 @@ class InterventionCoverage:
     applicable_schemes: tuple[str, ...]
     fund: str = ""
     sub_benefit_code: str = ""
+    applicable_document_types: tuple[str, ...] = ()
+    """Every type SHA will accept on a claim for this intervention.
+
+    Wider than the required list and narrower than the whole vocabulary: a type outside it is refused
+    by name. DHA repeats entries (`CLAIM_FORM` twice on SHA-06-022), so read it as a set.
+    """
+    optional_document_types: tuple[str, ...] = ()
+    """Claim documents SHA will look at but does not insist on. Kept apart from the required list —
+    shown together, five documents look mandatory when two are not."""
     required_preauth_document_types: tuple[str, ...] = ()
     optional_preauth_document_types: tuple[str, ...] = ()
     """What SHA will also look at, as distinct from what it refuses the pre-auth without.

@@ -15,9 +15,11 @@ the two ways of misreading it: treating an unapproved elective pre-auth as usabl
 
 from __future__ import annotations
 
-from sha_claim.adapters.wire.mappers import to_authorization, to_preauthorization
+from sha_claim.adapters.wire.mappers import to_authorization, to_intervention_coverage, to_preauthorization
 from sha_claim.adapters.wire.schemas.authorization import AuthorizationWire
+from sha_claim.adapters.wire.schemas.benefits import InterventionWire
 from sha_claim.adapters.wire.schemas.preauth import PreauthorizationWire
+from sha_claim.domain.benefits import InterventionCoverage
 
 
 def _preauth(**over: object) -> PreauthorizationWire:
@@ -236,3 +238,50 @@ class TestReachingOneInterventionsCoverage:
             "TREATMENT_PLAN",
         )
         assert coverage.optional_preauth_document_types == ("IMAGING_RESULT", "LAB_RESULTS")
+
+
+class TestAllThreeDocumentLists:
+    """SHA publishes three lists per intervention, and two of them were being dropped.
+
+    `requiredClaimDocuments` is what a claim is refused without. `applicableDocumentTypes` is
+    everything it will accept — wider than required, narrower than the vocabulary, and a type outside
+    it is refused by name. `optionalDocumentTypes` is what it will look at but not insist on. Only the
+    first was modelled, so a desk asking "what else can I send?" had no answer and a desk sending
+    something reasonable got a refusal naming a field.
+    """
+
+    def _coverage(self) -> InterventionCoverage:
+        return to_intervention_coverage(
+            InterventionWire.model_validate(
+                {
+                    "code": "PMF-13-001",
+                    "name": "Specialised consultation",
+                    "applicableDocumentTypes": ["CLAIM_FORM", "FINAL_BILL", "PRESCRIPTION", "CLAIM_FORM"],
+                    "optionalDocumentTypes": ["CASE_SUMMARY"],
+                    "requiredClaimDocuments": [
+                        {"key": "CLAIM_FORM", "label": "Claim Form", "anyOf": ["CLAIM_FORM"]},
+                        {"key": "FINAL_BILL", "label": "Final Bill", "anyOf": ["FINAL_BILL"]},
+                    ],
+                }
+            )
+        )
+
+    def test_all_three_survive_the_mapping(self) -> None:
+        coverage = self._coverage()
+        assert [d.key for d in coverage.required_claim_documents] == ["CLAIM_FORM", "FINAL_BILL"]
+        assert coverage.applicable_document_types == ("CLAIM_FORM", "FINAL_BILL", "PRESCRIPTION")
+        assert coverage.optional_document_types == ("CASE_SUMMARY",)
+
+    def test_the_repeated_entry_is_dropped_once(self) -> None:
+        """DHA lists `CLAIM_FORM` twice on this intervention; a UI should show it once."""
+        assert self._coverage().applicable_document_types.count("CLAIM_FORM") == 1
+
+    def test_required_is_a_subset_of_applicable_here(self) -> None:
+        """Not a rule DHA states, but true on every record seen — worth noticing if it ever breaks."""
+        coverage = self._coverage()
+        required = {d.key for d in coverage.required_claim_documents}
+        assert required <= set(coverage.applicable_document_types)
+
+    def test_an_intervention_that_states_nothing_reads_as_empty(self) -> None:
+        bare = to_intervention_coverage(InterventionWire.model_validate({"code": "X", "name": "X"}))
+        assert bare.applicable_document_types == () and bare.optional_document_types == ()

@@ -160,6 +160,9 @@ def to_intervention_coverage(w: InterventionWire) -> InterventionCoverage:
         sub_benefit_code=w.sub_benefit_code,
         required_preauth_document_types=tuple(w.required_preauth_document_types),
         optional_preauth_document_types=tuple(w.optional_preauth_document_types),
+        # Deduplicated, order kept: DHA repeats entries in this one.
+        applicable_document_types=tuple(dict.fromkeys(w.applicable_document_types)),
+        optional_document_types=tuple(dict.fromkeys(w.optional_document_types)),
         required_claim_documents=tuple(
             RequiredClaimDocument(
                 key=str(d.get("key", "")),

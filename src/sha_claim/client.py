@@ -423,11 +423,15 @@ class EmergencyResource:
         patient: PatientId | str | None = None,
         otp: Otp | None = None,
         notes: str,
+        consent_token: ConsentToken | str | None = None,
     ) -> ClaimSession:
         """`POST /claims/emergency` — `patient=None` for an unidentified casualty.
 
         `notes` is required by SHA. Interventions must belong to the emergency fund (see
         `InterventionCoverage.is_emergency`); the facility must be accredited for emergency services.
+
+        `consent_token` names a casualty admitted unidentified; prefer `identify()`, which reads as what
+        it is.
         """
         try:
             case = EmergencyCase(
@@ -439,11 +443,46 @@ class EmergencyResource:
                 PatientId.of(patient) if patient is not None else None,
                 otp,
                 notes,
+                ConsentToken.of(consent_token) if consent_token is not None else None,
             )
         except ValueError as exc:
             raise RequestValidationError([Violation("emergency", str(exc))]) from exc
         claim = await self._gateways.emergency.open_case(case)
         return ClaimSession(self._gateways, claim.consent_token, claim)
+
+    async def identify(
+        self,
+        consent_token: ConsentToken | str,
+        patient: PatientId | str,
+        otp: Otp,
+        *,
+        attending: PractitionerRef,
+        reference_number: str,
+        brought_by: BroughtBy,
+        mode_of_arrival: ModeOfArrival,
+        interventions: Sequence[InterventionCode | str],
+        notes: str,
+    ) -> ClaimSession:
+        """Name a casualty who was admitted unidentified — `POST /claims/emergency` a second time.
+
+        The same endpoint and the same payload as the open, plus her CR number, the OTP she can now give,
+        and the token of the claim already treating her. DHA updates that claim in place and keeps the
+        protocols billed against it.
+
+        Everything the case was opened with has to be sent again, so pass back what was used then: a
+        different reference number or a different intervention is a different case, not a correction.
+        """
+        return await self.open_case(
+            attending,
+            reference_number,
+            brought_by,
+            mode_of_arrival,
+            interventions,
+            patient=patient,
+            otp=otp,
+            notes=notes,
+            consent_token=consent_token,
+        )
 
     async def protocols(
         self, intervention: InterventionCode | str, *, active: bool = True

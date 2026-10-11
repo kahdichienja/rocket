@@ -10,7 +10,7 @@ from sha_claim.domain.attachments import Attachment
 from sha_claim.domain.codes import Icd11Code, InterventionCode, ProtocolCode
 from sha_claim.domain.consent import Otp
 from sha_claim.domain.enums import BroughtBy, ModeOfArrival
-from sha_claim.domain.identifiers import PatientId
+from sha_claim.domain.identifiers import ConsentToken, PatientId
 from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import PractitionerRef
 
@@ -31,6 +31,18 @@ class EmergencyCase:
     beneficiary: PatientId | None = None
     otp: Otp | None = None
     notes: str = ""
+    consent_token: ConsentToken | None = None
+    """The claim already open, when this call is naming the casualty rather than opening a case.
+
+    DHA's unidentified-emergency scenario posts to `/claims/emergency` **twice**: once without a
+    beneficiary to start treatment, and again once she is recognised, carrying the original payload plus
+    `beneficiary_cr_id`, her `otp` and this token. The second call *updates that claim* — the protocols
+    already billed against it are kept.
+
+    Without it the second post opens a **second** emergency case: the treatment given under the first is
+    stranded on a claim that can now only be submitted as an unknown patient, and the facility is paid
+    for one of the two.
+    """
 
     def __post_init__(self) -> None:
         if not self.reference_number.strip():
@@ -39,6 +51,11 @@ class EmergencyCase:
             raise ValueError("at least one intervention code is required")
         if not self.notes.strip():
             raise ValueError("notes cannot be empty (SHA rejects an emergency case without notes)")
+        if self.consent_token is not None and self.beneficiary is None:
+            raise ValueError(
+                "identifying an emergency casualty needs the beneficiary; without one this would "
+                "re-post the same unidentified case"
+            )
         object.__setattr__(self, "reference_number", self.reference_number.strip())
         object.__setattr__(self, "notes", self.notes.strip())
 

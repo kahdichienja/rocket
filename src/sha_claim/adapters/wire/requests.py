@@ -658,6 +658,10 @@ def open_emergency_case(case: EmergencyCase) -> WireRequest:
     if case.otp is not None:
         body["otp"] = case.otp.code
     body["notes"] = case.notes  # mandatory on UAT despite the portal marking it optional
+    if case.consent_token is not None:
+        # Naming a casualty who was admitted unidentified: the same endpoint, the original payload, and
+        # this token — which is what makes it an update of that claim rather than a second one.
+        body["consent_token"] = case.consent_token.value
     return WireRequest("POST", "/claims/emergency", json=body)
 
 

@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from sha_claim.adapters.wire import mappers, requests
 from sha_claim.adapters.wire.schemas.common import Page
 from sha_claim.adapters.wire.schemas.emergency import EmergencyProtocolWire
@@ -106,3 +108,58 @@ def test_protocols_map_from_portal_example() -> None:
     protocol = mappers.to_emergency_protocol(page.results[0])
     assert protocol.code == ProtocolCode("protocolCode") and protocol.name == "name"
     assert protocol.tariff is None  # placeholder string is not a number
+
+
+class TestNamingACasualtyAdmittedUnidentified:
+    """DHA's unidentified-emergency scenario posts to `/claims/emergency` twice.
+
+    The second post carries the original payload plus her CR number, her OTP and the **consent token of
+    the claim already treating her**. That token is what makes it an update: the protocols billed while
+    she was unknown stay on the claim. Without it the post opens a second case, and the treatment given
+    under the first is stranded on a claim that can only ever be submitted as an unknown patient.
+    """
+
+    def _case(self, **over: object) -> EmergencyCase:
+        base = {
+            "attending": PractitionerRef.registered("A18412", RegulationBody.KMPDC),
+            "reference_number": "NC-7F2A91",
+            "brought_by": BroughtBy.PARAMEDICS,
+            "mode_of_arrival": ModeOfArrival.AMBULANCE,
+            "interventions": (InterventionCode("SHA-01-005"),),
+            "notes": "Collapsed at the roadside.",
+        }
+        return EmergencyCase(**{**base, **over})  # type: ignore[arg-type]
+
+    def test_the_open_carries_no_beneficiary_and_no_token(self) -> None:
+        body = requests.open_emergency_case(self._case()).json
+        assert "beneficiary_cr_id" not in body and "otp" not in body and "consent_token" not in body
+
+    def test_naming_her_sends_all_three(self) -> None:
+        body = requests.open_emergency_case(
+            self._case(
+                beneficiary=PatientId("CR-2026-000235"),
+                otp=Otp("123456"),
+                consent_token=ConsentToken("CR0-EMERGENCY1"),
+            )
+        ).json
+        assert body["beneficiary_cr_id"] == "CR-2026-000235"
+        assert body["otp"] == "123456"
+        assert body["consent_token"] == "CR0-EMERGENCY1"
+
+    def test_the_rest_of_the_payload_is_repeated_verbatim(self) -> None:
+        """A different reference or intervention is a different case, not a correction."""
+        opened = requests.open_emergency_case(self._case()).json
+        named = requests.open_emergency_case(
+            self._case(
+                beneficiary=PatientId("CR-2026-000235"),
+                otp=Otp("123456"),
+                consent_token=ConsentToken("CR0-EMERGENCY1"),
+            )
+        ).json
+        for field in ("reference_number", "brought_by", "mode_of_arrival", "interventions", "notes"):
+            assert named[field] == opened[field], field
+
+    def test_a_token_without_a_beneficiary_is_refused(self) -> None:
+        """It would re-post the same unidentified case and open a duplicate."""
+        with pytest.raises(ValueError, match="beneficiary"):
+            self._case(consent_token=ConsentToken("CR0-EMERGENCY1"))

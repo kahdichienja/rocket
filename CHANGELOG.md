@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.38] — 2026-10-11
+
+### Added
+- **`emergency.identify(...)` — naming a casualty who was admitted unidentified.**
+
+  DHA's unidentified-emergency scenario posts to `/claims/emergency` **twice**: once without a
+  beneficiary so treatment can start, and again once she is recognised, carrying the original payload
+  plus her CR number, her OTP and **the consent token of the claim already treating her**. That token
+  is what makes the second call an update — the protocols billed while she was unknown stay on the
+  claim.
+
+  `EmergencyCase` had no `consent_token` and the request never sent one, so the second post would have
+  opened a *second* case: the treatment given under the first stranded on a claim that can only be
+  submitted as an unknown patient, and the facility paid for one of the two. A token without a
+  beneficiary is refused before the call, because that is the same unidentified case posted again.
+
 ## [0.1.37] — 2026-10-10
 
 ### Added

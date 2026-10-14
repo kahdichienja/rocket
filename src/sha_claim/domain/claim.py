@@ -370,8 +370,10 @@ class NewClaimLine:
     def __post_init__(self) -> None:
         if Decimal(self.quantity) <= 0:
             raise ValueError("quantity must be positive")
-        if self.unit_price.is_negative:
-            raise ValueError("unit_price cannot be negative")
+        # DHA refuses a zero price at the decode step — "unit price must be greater than 0" — and the
+        # 400 names neither the line nor the claim, so an unpriced service is caught here instead.
+        if self.unit_price.amount <= 0:
+            raise ValueError("unit_price must be greater than 0")
         object.__setattr__(self, "service_name", self.service_name.strip())
         object.__setattr__(self, "service_identifier", self.service_identifier.strip())
 
@@ -394,6 +396,9 @@ class LineEdit:
             raise ValueError("an edit must change at least one of quantity, unit_price, scheme_code")
         if self.quantity is not None and self.quantity <= 0:
             raise ValueError("quantity must be positive")
+        # The edit endpoint validates the price the same way the line endpoint does.
+        if self.unit_price is not None and self.unit_price.amount <= 0:
+            raise ValueError("unit_price must be greater than 0")
 
 
 @dataclass(frozen=True, slots=True)

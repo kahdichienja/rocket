@@ -24,6 +24,14 @@ def test_new_line_total_and_invariants() -> None:
     assert NewClaimLine(CODE, Money.kes(1), Decimal("0.5")).total == Money.kes("0.50")
 
 
+def test_an_unpriced_service_is_refused_before_dha_sees_it() -> None:
+    """DHA answers a zero price with "unit price must be greater than 0", naming no line."""
+    with pytest.raises(ValueError, match="greater than 0"):
+        NewClaimLine(CODE, Money.kes(0), 1)
+    with pytest.raises(ValueError, match="greater than 0"):
+        LineEdit(LineGuid("g"), unit_price=Money.kes(0))
+
+
 def test_line_edit_requires_a_change() -> None:
     with pytest.raises(ValueError, match="at least one"):
         LineEdit(LineGuid("g"))

@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.40] — 2026-10-14
+
+### Fixed
+- **A claim line priced at zero is refused here, not at DHA.** `NewClaimLine` rejected a negative
+  `unit_price` but accepted zero, and DHA requires more than zero. A service the facility price list
+  has never been given a rate for therefore travelled all the way to the eClaims API and came back as
+  `400 failed to decode request body: unit price must be greater than 0` — a message naming neither the
+  line nor the service, on a request that carries the claim's diagnoses and attachments with it.
+
+  `LineEdit` is validated the same way, because `PATCH /claims/lines/edit` applies the same rule to the
+  same field. `quantity` was already checked this way; the price check was simply looser than the rule
+  it mirrored.
+
 ## [0.1.39] — 2026-10-11
 
 ### Added

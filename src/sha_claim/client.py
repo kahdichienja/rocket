@@ -554,6 +554,17 @@ class ShrResource:
         """Send the code again. **Use the `otp_record` this returns**, not the original."""
         return await self._gateway.resend_otp(consent_id)
 
+    async def open_visits(self, cr_id: str, facility_id: str) -> list[str]:
+        """Visits at this facility the patient has already consented to.
+
+        Ask before requesting consent. A patient with an open visit cannot start another, and refreshing
+        that visit's token costs them no second OTP — which is the difference between a clinician reading
+        a history now and a patient who has already gone home being phoned for a code.
+
+        Empty means there is nothing to reuse and a fresh consent request is needed.
+        """
+        return await self._gateway.open_visits(cr_id, facility_id)
+
     async def refresh(self, visit_id: str) -> ShrConsentTokenValue:
         """A fresh token for a visit that is still open."""
         return await self._gateway.refresh(visit_id)

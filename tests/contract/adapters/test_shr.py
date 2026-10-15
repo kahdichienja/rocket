@@ -18,6 +18,7 @@ from sha_claim.adapters.wire.mappers import (
     to_shr_bundle_receipt,
     to_shr_consent,
     to_shr_consent_state,
+    to_shr_open_visits,
     to_shr_security_label,
     to_shr_verification,
 )
@@ -25,6 +26,7 @@ from sha_claim.adapters.wire.schemas.shr import (
     ShrBundleReceiptWire,
     ShrConsentStatusWire,
     ShrConsentWire,
+    ShrOpenVisitsWire,
     ShrSecurityLabelWire,
     ShrVerificationWire,
 )
@@ -443,3 +445,36 @@ class TestTheSecurityLabelCatalogue:
         hiv = to_shr_security_label(ShrSecurityLabelWire(code="HIV", system=ACT_CODE_SYSTEM))
         assert restricted.is_restricted is True
         assert hiv.is_restricted is False
+
+
+class TestVisitsAlreadyConsentedTo:
+    """`GET /shr/open-visits`.
+
+    The call that keeps a patient from being asked twice: one with an open visit cannot start another
+    consent, and that visit's token can simply be refreshed. Without it a desk's only move was a second
+    OTP to a patient who had often already left.
+    """
+
+    def test_asks_by_patient_and_facility(self) -> None:
+        wire = requests.shr_open_visits("CR-2026-000256", "FID-47-115307-8")
+        assert wire.method == "GET"
+        assert wire.path == "/shr/open-visits"
+        # DHA names these `patient_id` and `facility_id` here, not `cr_id` as the consent request does.
+        assert wire.params == {"patient_id": "CR-2026-000256", "facility_id": "FID-47-115307-8"}
+
+    def test_reads_ids_from_either_shape_the_page_describes(self) -> None:
+        """The schema says `object[]`; the prose says "visit ids only". Both arrive here intact."""
+        assert to_shr_open_visits(ShrOpenVisitsWire(visits=["VISIT-1", "VISIT-2"])) == [
+            "VISIT-1",
+            "VISIT-2",
+        ]
+        assert to_shr_open_visits(ShrOpenVisitsWire(visits=[{"visit_id": "VISIT-1"}])) == ["VISIT-1"]
+        assert to_shr_open_visits(ShrOpenVisitsWire(visits=[{"id": "VISIT-1"}])) == ["VISIT-1"]
+
+    def test_drops_an_entry_with_no_readable_id(self) -> None:
+        """An empty id passed to `refresh` is a 404 the caller cannot explain."""
+        assert to_shr_open_visits(ShrOpenVisitsWire(visits=[{}, "", 7, {"visit_id": ""}])) == []
+
+    def test_no_open_visit_is_an_empty_list_not_an_error(self) -> None:
+        """Nothing to reuse means ask for consent — an ordinary answer, not a failure."""
+        assert to_shr_open_visits(ShrOpenVisitsWire()) == []

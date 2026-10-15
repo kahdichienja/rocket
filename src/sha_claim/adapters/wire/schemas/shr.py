@@ -47,6 +47,20 @@ class ShrVisitClosedWire(WireModel):
     status: str = ""
 
 
+class ShrOpenVisitsWire(WireModel):
+    """`GET /shr/open-visits`.
+
+    DHA's own page contradicts itself here: the schema types `visits` as `object[]` while the prose says
+    "the response carries the visit ids only", and it defines no field inside the object. Both shapes are
+    therefore accepted rather than one being guessed at — the facility search was documented one way and
+    arrived another, and the SDK broke on it. The mapper reads whichever key carries the id.
+    """
+
+    visits: list[Any] = Field(default_factory=list)
+    message: str = ""
+    status: str = ""
+
+
 class ShrBundleReceiptWire(WireModel):
     """`POST /shr/bundles`."""
 

@@ -803,6 +803,19 @@ def resend_shr_otp(consent_id: str) -> WireRequest:
     return WireRequest("POST", f"/shr/consents/{consent_id}/resend-otp")
 
 
+def shr_open_visits(cr_id: str, facility_id: str) -> WireRequest:
+    """`GET /shr/open-visits` — visits this facility already holds consent for.
+
+    Worth calling before asking for consent: a patient with an open visit cannot start another, and
+    refreshing its token costs the patient no second OTP.
+    """
+    return WireRequest(
+        "GET",
+        "/shr/open-visits",
+        params={"patient_id": cr_id, "facility_id": facility_id},
+    )
+
+
 def refresh_shr_consent(visit_id: str) -> WireRequest:
     """`POST /shr/visits/{id}/refresh` — a fresh token while the visit is still open."""
     return WireRequest("POST", f"/shr/visits/{visit_id}/refresh")

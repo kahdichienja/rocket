@@ -42,6 +42,7 @@ from sha_claim.adapters.wire.schemas.shr import (
     ShrBundleReceiptWire,
     ShrConsentStatusWire,
     ShrConsentWire,
+    ShrOpenVisitsWire,
     ShrRefreshWire,
     ShrSecurityLabelsWire,
     ShrSecurityLabelWire,
@@ -529,6 +530,10 @@ class HttpShrGateway:
     async def resend_otp(self, consent_id: str) -> ShrConsent:
         response = await self._transport.send(requests.resend_shr_otp(consent_id))
         return mappers.to_shr_consent(parse_as(ShrConsentWire, response))
+
+    async def open_visits(self, cr_id: str, facility_id: str) -> list[str]:
+        response = await self._transport.send(requests.shr_open_visits(cr_id, facility_id))
+        return mappers.to_shr_open_visits(parse_as(ShrOpenVisitsWire, response))
 
     async def refresh(self, visit_id: str) -> ShrConsentTokenValue:
         response = await self._transport.send(requests.refresh_shr_consent(visit_id))

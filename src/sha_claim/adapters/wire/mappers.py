@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 
 from sha_claim.adapters.wire.parsing import parse_date, parse_datetime
@@ -42,6 +43,7 @@ from sha_claim.adapters.wire.schemas.shr import (
     ShrBundleReceiptWire,
     ShrConsentStatusWire,
     ShrConsentWire,
+    ShrOpenVisitsWire,
     ShrSecurityLabelWire,
     ShrVerificationWire,
     ShrVisitClosedWire,
@@ -689,6 +691,33 @@ def to_shr_consent_state(w: ShrConsentStatusWire) -> ShrConsentState:
         message=w.message,
         extra=w.unmodelled(),
     )
+
+
+def to_shr_open_visits(w: ShrOpenVisitsWire) -> list[str]:
+    """The visit ids, from either shape DHA's page describes.
+
+    A bare string is the id. An object is searched for the first key that plausibly carries one, because
+    the page names none. Anything unreadable is dropped rather than returned as an empty id: a caller
+    would pass it to `refresh` and get a 404 it could not explain.
+    """
+    ids: list[str] = []
+    for entry in w.visits:
+        if isinstance(entry, str):
+            candidate = entry.strip()
+        elif isinstance(entry, Mapping):
+            candidate = next(
+                (
+                    str(entry[key]).strip()
+                    for key in ("visit_id", "visitId", "id", "shr_visit_id")
+                    if entry.get(key)
+                ),
+                "",
+            )
+        else:
+            candidate = ""
+        if candidate:
+            ids.append(candidate)
+    return ids
 
 
 def to_shr_visit_closed(w: ShrVisitClosedWire) -> ShrVisitClosed:

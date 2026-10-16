@@ -733,6 +733,14 @@ class HttpHealthWorkerGateway:
         raise_for_status(response)
         # DHA answers with a bare object for some lookups and a paged list for others.
         body: Any = response.json()
+        # DHA wraps the practitioner in `message.membership`; `results` and a bare list are kept for the
+        # shapes the documentation implies. Unwrapped in that order, because the real one is the one that
+        # arrives: validating the envelope itself succeeds — every field is optional — and yields a
+        # practitioner with no registry id, which downstream cannot tell from "no such practitioner".
+        if isinstance(body, Mapping) and isinstance(body.get("message"), Mapping):
+            body = body["message"]
+        if isinstance(body, Mapping) and isinstance(body.get("membership"), Mapping):
+            body = body["membership"]
         if isinstance(body, Mapping):
             results = body.get("results")
             if isinstance(results, list):

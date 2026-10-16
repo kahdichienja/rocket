@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import Field
 
 from sha_claim.adapters.wire.schemas.common import WireModel
@@ -49,7 +51,25 @@ class PatientContactWire(WireModel):
 
 
 class HealthWorkerWire(WireModel):
-    """`GET /api/v1/professionals`. DHA publishes no shape for it, so every field is optional."""
+    """`GET /api/v1/professionals` — one entry of DHA's `message.membership`.
+
+    DHA publishes no shape for this, and the shape it actually sends shares almost no key names with the
+    ones guessed here originally. Observed on UAT, 2026-10-16:
+
+        {"message": {"membership": {"id": "PUID-0035218-8", "full_name": "Dr Eight One",
+                                    "registration_id": "PUID-035219",
+                                    "external_reference_id": "T-80000781",
+                                    "licensing_body": "KMPDC", "specialty": "MEDICINE",
+                                    "is_active": 1}, ...}}
+
+    Not one of `registry_id`, `registration_number`, `name`, `regulator` or `status` is present. Every
+    lookup therefore validated — each field being optional — and produced a practitioner with an empty
+    registry id, which reads downstream as "the registry holds nobody with that number". The registry
+    had answered, in full, and the answer was thrown away.
+
+    Both spellings are kept: the optimistic ones in case DHA ever flattens it, the observed ones because
+    they are what arrives today.
+    """
 
     id: str = ""
     registry_id: str = ""
@@ -59,3 +79,12 @@ class HealthWorkerWire(WireModel):
     regulator: str = ""
     status: str = ""
     specialty: str = ""
+    #: What DHA actually sends.
+    external_reference_id: str = ""
+    """The regulator's own number — `T-80000781`, or the bare number for PPB."""
+    registration_id: str = ""
+    """A second PUID, distinct from `id`. Not the registry id an SHR read wants."""
+    licensing_body: str = ""
+    """`KMPDC`, or spelled out as `Pharmacy and Poisons Board`. Taken verbatim."""
+    is_active: Any = None
+    """`1`/`0` as an integer, where the flat shape would have carried a `status` string."""

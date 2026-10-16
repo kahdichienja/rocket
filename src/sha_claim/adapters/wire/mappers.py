@@ -858,12 +858,24 @@ def _service_name(item: object) -> str:
 
 
 def to_health_worker(w: HealthWorkerWire) -> HealthWorker:
+    """DHA's observed keys first, the flat ones it has never sent as a fallback.
+
+    `is_active` arrives as the integer 1 or 0 where the domain wants a status word, so it is translated
+    rather than stringified: `HealthWorker.is_active` matches against ACTIVE/VALID/LICENSED/REGISTERED
+    and treats anything unrecognised as not active — `"1"` would have read as struck off.
+    """
+    status = w.status
+    if not status and w.is_active is not None:
+        status = (
+            "ACTIVE" if str(w.is_active).strip().lower() in {"1", "true", "yes", "active"} else "INACTIVE"
+        )
+
     return HealthWorker(
         registry_id=w.registry_id or w.id,
-        registration_number=w.registration_number,
+        registration_number=w.registration_number or w.external_reference_id,
         name=w.name or w.full_name,
-        regulator=w.regulator,
-        status=w.status,
+        regulator=w.regulator or w.licensing_body,
+        status=status,
         specialty=w.specialty,
         extra=w.unmodelled(),
     )

@@ -38,6 +38,8 @@ class PatientRecordWire(WireModel):
     ward: str = ""
     other_identifications: list[OtherIdentificationWire] = Field(default_factory=list)
     dependants: list[DependantGroupWire] = Field(default_factory=list)
+    # Omitted entirely for the living — the registry does not send it as null.
+    deceased_datetime: str = ""
 
 
 class PatientContactWire(WireModel):

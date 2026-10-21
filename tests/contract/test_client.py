@@ -582,3 +582,39 @@ async def test_before_visit_refuses_an_authorization_with_no_token(settings: SHA
     async with AsyncSHAClient(settings) as sha:
         with pytest.raises(ValueError, match="no token"):
             sha.claims.before_visit("  ")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_registry_record_reports_a_death_even_when_the_timestamp_is_unparseable(
+    settings: SHASettings,
+) -> None:
+    """The registry omits `deceased_datetime` for the living, so any value at all means a death.
+
+    Deciding it on the parsed timestamp alone would read an unfamiliar date format as `None` — which
+    is indistinguishable from a living member, and is how a visit gets opened against someone who
+    has died.
+    """
+    respx.post(f"{settings.api_root}/tenants/token").mock(
+        return_value=httpx.Response(200, json={"access_token": "T", "expires_in": 3600})
+    )
+    respx.get(f"{settings.api_root}/patients").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "CR-2026-000256",
+                "first_name": "JANE",
+                "last_name": "CHEBET",
+                "identification_type": "National ID",
+                "identification_number": "1000000256",
+                "deceased_datetime": "04/03/2026",
+            },
+        )
+    )
+    async with AsyncSHAClient(settings) as sha:
+        record = await sha.registries.find_patient("1000000256")
+
+    assert record is not None
+    assert record.is_deceased is True
+    assert record.deceased_datetime is None  # not a format we parse
+    assert record.deceased_raw == "04/03/2026"

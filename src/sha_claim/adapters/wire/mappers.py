@@ -673,6 +673,8 @@ def to_patient_record(w: PatientRecordWire) -> PatientRecord:
         ),
         dependant_ids=tuple(dependants),
         dependants=tuple(dependant_records),
+        deceased_datetime=parse_datetime(w.deceased_datetime),
+        deceased_raw=w.deceased_datetime,
         extra=w.unmodelled(),
     )
 

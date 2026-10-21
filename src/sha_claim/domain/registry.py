@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from sha_claim.domain.identifiers import PatientId
@@ -75,11 +75,31 @@ class PatientRecord:
     """Kept for callers that only ever wanted the CR numbers. Same order as `dependants`."""
     dependants: tuple[Dependant, ...] = ()
     """The same people with their relationship to this principal, and names where SHA sent them."""
+    deceased_datetime: datetime | None = None
+    """When the registry records this member as having died, where that timestamp could be parsed."""
+    deceased_raw: str = ""
+    """The value exactly as the registry sent it, empty for the living.
+
+    Kept beside the parsed timestamp because the two answer different questions. A value we cannot
+    parse still means the registry recorded a death, and `deceased_datetime` alone would read as
+    `None` — indistinguishable from a living member. Deciding "is this person alive?" on a parser is
+    how an unfamiliar date format quietly turns into a visit opened against someone who has died.
+    """
     extra: Mapping[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     @property
     def full_name(self) -> str:
         return " ".join(p for p in (self.first_name, self.middle_name, self.last_name) if p.strip())
+
+    @property
+    def is_deceased(self) -> bool:
+        """Whether the registry holds a date of death for this member.
+
+        A caller registering a patient or opening a visit should refuse on this. The national registry
+        knowing someone has died is a far stronger signal than anything a desk can see, and a claim
+        filed against a dead member is a fraud finding rather than a billing error.
+        """
+        return bool(self.deceased_raw.strip()) or self.deceased_datetime is not None
 
     def identification(self, kind: str) -> str:
         """Another identifier the registry holds, e.g. `identification("SHA Number")`."""

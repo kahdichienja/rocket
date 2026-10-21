@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.44] — 2026-10-21
+
+### Added
+- **`PatientRecord.deceased_datetime`, `.deceased_raw` and `.is_deceased`.** The Client Registry
+  records a date of death and the SDK was dropping it, so a caller had no way to know. Registering a
+  patient or opening a visit against someone the national registry knows has died is a fraud finding
+  rather than a billing error, and the registry is a far stronger signal than anything visible at a
+  desk.
+
+  `is_deceased` is deliberately **not** derived from the parsed timestamp alone. The registry omits
+  the key entirely for the living rather than sending null, so any value at all means a death — and
+  a format this parser does not recognise would otherwise read as `None`, indistinguishable from a
+  living member. `deceased_raw` keeps the value as sent, and `is_deceased` is true when either is
+  present, so an unfamiliar date format fails towards refusing a visit rather than allowing one.
+
 ## [0.1.43] — 2026-10-21
 
 ### Added

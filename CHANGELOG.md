@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.43] — 2026-10-21
+
+### Added
+- **`IdentificationType` carries the whole set the Client Registry documents.** It held `National ID`,
+  `Alien ID` and `Refugee ID`; `GET /patients` also accepts `ClientRegistry ID`, `Birth Notification`,
+  `Birth Certificate` and `Mandate Number`.
+
+  `ClientRegistry ID` is the one that mattered: it looks a member up by the CR number already on their
+  record, which is the only identifier that survives their documents changing. Without it a caller
+  holding a CR number and nothing else could not ask the registry who that person was — and a
+  dependant is frequently given as a CR number and nothing else.
+
+- **`PatientRecord.dependants`, and the `Dependant` that carries one.** The registry groups a
+  principal's dependants by relationship and returns each group's members as rows. Only the CR number
+  was kept; the relationship and the names alongside it were dropped on the floor.
+
+  So a caller could tell that a principal had three dependants but not who they were or how they were
+  related — which is the whole of the question being asked, because the member who produces an ID at
+  a desk is frequently not the one who is ill. `dependant_ids` is unchanged and still lists the same
+  people in the same order.
+
+  Only `id` is documented in those rows, so names are read leniently, `is_named` says whether one
+  arrived, and anything unmodelled is kept in `extra` rather than discarded.
+
 ## [0.1.40] — 2026-10-14
 
 ### Fixed

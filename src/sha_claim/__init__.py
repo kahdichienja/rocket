@@ -125,7 +125,7 @@ from sha_claim.domain.preauth_vocabulary import (
     TreatmentSetting,
 )
 from sha_claim.domain.prescription import Dispense, DispensedProduct, Dosage, MedicationOrder, Prescription
-from sha_claim.domain.registry import OtherIdentification, PatientContact, PatientRecord
+from sha_claim.domain.registry import Dependant, OtherIdentification, PatientContact, PatientRecord
 from sha_claim.domain.schemes import belongs_to_scheme, canonical_scheme, scheme_family
 from sha_claim.domain.shr import (
     ShrBundleReceipt,
@@ -173,7 +173,7 @@ from sha_claim.settings import Environment, SHASettings, Timeouts
 #: message insisting the right version was the wrong one. Deriving it from package metadata instead looked
 #: tempting and is worse: an editable checkout reports whatever it was last installed as (`0.1.0.dev0`
 #: here), so the guard would then reject every development environment.
-__version__ = "0.1.42"
+__version__ = "0.1.43"
 
 __all__ = [
     "STATUS_CHANGED",
@@ -215,6 +215,7 @@ __all__ = [
     "Coverage",
     "CoverageSelection",
     "CoverageStatus",
+    "Dependant",
     "Discharge",
     "DischargeReason",
     "Dispense",

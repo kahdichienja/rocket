@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from sha_claim.adapters.wire.parsing import parse_date, parse_datetime
 from sha_claim.adapters.wire.schemas.authorization import (
@@ -107,7 +108,7 @@ from sha_claim.domain.money import Money
 from sha_claim.domain.practitioner import HealthWorker
 from sha_claim.domain.preauth import Preauthorization
 from sha_claim.domain.prescription import Dispense, Dosage, Prescription
-from sha_claim.domain.registry import OtherIdentification, PatientContact, PatientRecord
+from sha_claim.domain.registry import Dependant, OtherIdentification, PatientContact, PatientRecord
 from sha_claim.domain.shr import (
     ShrBundleReceipt,
     ShrConsent,
@@ -617,13 +618,41 @@ def _optional_int(raw: str | float | int | None) -> int | None:
         return None
 
 
+_DEPENDANT_MODELLED_KEYS = frozenset(
+    {"id", "first_name", "middle_name", "last_name", "gender", "date_of_birth"}
+)
+
+
+def _to_dependant(relationship: str, row: Mapping[str, Any]) -> Dependant | None:
+    """One row of a dependants group.
+
+    Only `id` is documented, so every other field is optional and whatever is not modelled is kept
+    in `extra` — that is how the next environment's extra column reaches a caller instead of being
+    silently dropped.
+    """
+    patient_id = _patient(str(row.get("id", "")))
+    if patient_id is None:
+        return None
+    return Dependant(
+        patient_id=patient_id,
+        relationship=relationship,
+        first_name=str(row.get("first_name") or ""),
+        middle_name=str(row.get("middle_name") or ""),
+        last_name=str(row.get("last_name") or ""),
+        gender=str(row.get("gender") or ""),
+        date_of_birth=parse_date(str(row["date_of_birth"])) if row.get("date_of_birth") else None,
+        extra={k: v for k, v in row.items() if k not in _DEPENDANT_MODELLED_KEYS},
+    )
+
+
 def to_patient_record(w: PatientRecordWire) -> PatientRecord:
-    dependants: list[PatientId] = []
+    dependant_records: list[Dependant] = []
     for group in w.dependants:
         for row in group.result:
-            dependant = _patient(str(row.get("id", "")))
+            dependant = _to_dependant(group.relationship, row)
             if dependant is not None:
-                dependants.append(dependant)
+                dependant_records.append(dependant)
+    dependants: list[PatientId] = [d.patient_id for d in dependant_records if d.patient_id is not None]
     return PatientRecord(
         patient_id=_patient(w.id),
         first_name=w.first_name,
@@ -643,6 +672,7 @@ def to_patient_record(w: PatientRecordWire) -> PatientRecord:
             for o in w.other_identifications
         ),
         dependant_ids=tuple(dependants),
+        dependants=tuple(dependant_records),
         extra=w.unmodelled(),
     )
 

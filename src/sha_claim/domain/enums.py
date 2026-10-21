@@ -39,11 +39,24 @@ class ServiceType(StrEnum):
 
 
 class IdentificationType(StrEnum):
-    """`identification_type` for patients (eligibility) and practitioners."""
+    """`identification_type` for patients (eligibility, client registry) and practitioners.
+
+    The full set is what the Client Registry documents for `GET /patients`
+    (https://afyaconnect.dha.go.ke/hie-api/hieRegistry/client-registry#get-patient-record).
+    `CLIENT_REGISTRY_ID` is how a member is looked up by the CR number we already hold, which is the
+    only identifier that stays stable when a patient's documents change.
+
+    The eligibility endpoint documents `identification_type` without enumerating its values, so it is
+    not known to accept every one of these. A registry lookup is the safe place to use the rarer ones.
+    """
 
     NATIONAL_ID = "National ID"
+    CLIENT_REGISTRY_ID = "ClientRegistry ID"
+    BIRTH_NOTIFICATION = "Birth Notification"
+    BIRTH_CERTIFICATE = "Birth Certificate"
     ALIEN_ID = "Alien ID"
     REFUGEE_ID = "Refugee ID"
+    MANDATE_NUMBER = "Mandate Number"
     REGISTRATION_NUMBER = "registration_number"  # practitioners only
 
 

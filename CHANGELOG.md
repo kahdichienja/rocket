@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.45] — 2026-10-27
+
+### Added
+- **The production base URL.** `https://ilm-hie.dha.go.ke/middleware`, given by the HIE team and still
+  not on the developer portal — which is why `_BASE_URLS[PRODUCTION]` was blank and `SHA_BASE_URL` was
+  mandatory for a production client. It no longer is; the variable still overrides the default, so an
+  integration already setting it is unaffected.
+
+### Documented
+- **What a status callback actually delivers.** The HIE team sent integrators the payload: a flat
+  object with `entity_type` (`claim` / `preauth` / `authorization`), `subject_guid`, `from_state`,
+  `to_state`, `facility_fr_code`, `timestamp`, `consent_token` and `notes`, plus `provider_claim_no`
+  on a claim and `tenant_code` on the other two.
+
+  Nothing in the SDK changes. `CallbackEntityType` already held exactly those three values, and the
+  position taken in 0.1.35 — model the management API, not the delivered body — still holds, because
+  **the one thing they did not send is any way to prove a delivery came from them.** No signature, no
+  shared secret, no mTLS. A documented body is not an authenticated one, and `to_state: APPROVED`
+  arriving over an unauthenticated POST is exactly the value it would be most costly to believe.
+
 ## [0.1.44] — 2026-10-21
 
 ### Added

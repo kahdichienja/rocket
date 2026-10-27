@@ -80,7 +80,7 @@ Configuration is read from environment variables:
 | `SHA_CLIENT_ID` | yes | — | OAuth2 client id from DHA onboarding |
 | `SHA_CLIENT_SECRET` | yes | — | OAuth2 client secret |
 | `SHA_ENVIRONMENT` | no | `uat` | `uat` or `production` |
-| `SHA_BASE_URL` | production only | UAT URL | Override the base URL (no trailing `/api/v1`) |
+| `SHA_BASE_URL` | no | per `SHA_ENVIRONMENT` | Override the base URL (no trailing `/api/v1`). Defaults: UAT `https://ilm-dev.dha.go.ke/uat-middleware`, production `https://ilm-hie.dha.go.ke/middleware` |
 | `SHA_CONNECT_TIMEOUT` | no | `5` | seconds |
 | `SHA_READ_TIMEOUT` | no | `30` | seconds |
 | `SHA_UPLOAD_TIMEOUT` | no | `120` | seconds, for multipart uploads |

@@ -16,10 +16,10 @@ def test_missing_credentials_fail_fast() -> None:
         SHASettings.from_env({"SHA_CLIENT_ID": "a"})
 
 
-def test_production_requires_explicit_base_url() -> None:
+def test_production_has_a_known_base_url() -> None:
+    """Blank until the HIE team gave it on 2026-10-27, which is why `SHA_BASE_URL` was mandatory here."""
     env = {"SHA_CLIENT_ID": "a", "SHA_CLIENT_SECRET": "b", "SHA_ENVIRONMENT": "production"}
-    with pytest.raises(ConfigurationError, match="SHA_BASE_URL"):
-        SHASettings.from_env(env)
+    assert SHASettings.from_env(env).api_root == "https://ilm-hie.dha.go.ke/middleware/api/v1"
     s = SHASettings.from_env({**env, "SHA_BASE_URL": "https://prod.example/"})
     assert s.api_root == "https://prod.example/api/v1"
 

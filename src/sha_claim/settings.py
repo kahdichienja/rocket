@@ -17,8 +17,9 @@ class Environment(StrEnum):
 
 _BASE_URLS: dict[Environment, str] = {
     Environment.UAT: "https://ilm-dev.dha.go.ke/uat-middleware",
-    # Not published on the developer portal; must be supplied via SHA_BASE_URL.
-    Environment.PRODUCTION: "",
+    # Given by the HIE team on 2026-10-27; still not on the developer portal, which is why it was
+    # blank here until now. `SHA_BASE_URL` continues to override it.
+    Environment.PRODUCTION: "https://ilm-hie.dha.go.ke/middleware",
 }
 
 

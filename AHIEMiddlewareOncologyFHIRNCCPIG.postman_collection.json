@@ -1,0 +1,3076 @@
+{
+  "info": {
+    "_postman_id": "5e9ea73a-b827-4ad7-982f-4544820cae4c",
+    "name": "A*** HIE Middleware — Oncology FHIR (NCCP IG)",
+    "description": "The oncology journey on the FHIR API (`/api/v1/oncology/fhir`), conforming to the Kenya NCCP IG (`ke.fhir.nccp#1.0.0`, FHIR R4). It is the FHIR counterpart of _HIE Middleware — Oncology (v1)_, in the same order: open the case, assemble the care team, record vitals, diagnose, order tests, plan and activate the regimen, record doses, then consent, preauthorise and bill.\n\n**Usage**\n\n1. Set `base_url`, `token_url`, `client_id`, `client_secret`, `facility_id` (FR code, e.g. FID-47-105963-0), `patient_cr`, `practitioner_puid` and `second_puid` (Practitioner/{PUID}s from the health worker registry). The pre-request script mints the token and fills `run`, `today`, `now`, `start_date`, `service_end`.\n    \n2. Run folders 0 to 9 top to bottom. Client-chosen ids end in `{{run}}`; clear `run` for a new journey. Test scripts chain `consent_id`, `cycle1_id` and the server-built resources the edit requests change.\n    \n3. Before each `$verify`, set `otp` from the member's phone (10 minutes, single use).\n    \n\n**How writes behave.** Every write is validated against its NCCP profile (`$validate` on the SHR), written to EDI, then stored in the SHR. 201 created / 200 updated; **202** means EDI committed and the SHR write is queued for retry. Errors are `OperationOutcome`s with the failing element in `issue.expression`. Resources are scoped to the calling facility: reads and searches never see another facility's records.\n\n**Codes.** Use the IG code systems; SHA interventions and generic products come from the HIE overlays (real SHA-06 oncology codes, KNC generics). Displays must match the code system exactly.\n\n**Not in the FHIR API (use v1):** the multi-test multipart preauth, cycle dose-reduction/delay edits, and the low-level case↔preauth link. Referrals return 501.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "6135892"
+  },
+  "item": [
+    {
+      "name": "0 · Auth & capability",
+      "item": [
+        {
+          "name": "POST token (client credentials)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {\n    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }\n};\nconst body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();\nconst entries = (body && body.entry || []).map(e => e.resource);\nput('access_token', body.access_token);\nput('token_expiry', String(Date.now() + (body.expires_in - 30) * 1000));\npm.test('token issued', () => pm.expect(body.access_token).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{client_id}}"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{client_secret}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "https://ilm-dev.dha.go.ke/uat-middleware/api/v1/tenants/token",
+              "protocol": "https",
+              "host": [
+                "ilm-dev",
+                "dha",
+                "go",
+                "ke"
+              ],
+              "path": [
+                "uat-middleware",
+                "api",
+                "v1",
+                "tenants",
+                "token"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "CapabilityStatement",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('NCCP IG', () => pm.expect(body.implementationGuide[0]).to.include('ke.fhir.nccp'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              }
+            ],
+            "url": {
+              "raw": "{{fhir_base}}/metadata",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "metadata"
+              ]
+            },
+            "description": "What the server supports: resource types, the NCCP profile each is validated against, and the operations ($apply, $activate, $verify, $submit)."
+          },
+          "response": []
+        }
+      ],
+      "description": "The collection pre-request script mints and caches a client-credentials token. `metadata` lists every resource, profile and operation this API supports."
+    },
+    {
+      "name": "1 · Case (EpisodeOfCare)",
+      "item": [
+        {
+          "name": "Search cases by patient",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              }
+            ],
+            "url": {
+              "raw": "{{fhir_base}}/EpisodeOfCare?patient=Patient/{{patient_cr}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "EpisodeOfCare"
+              ],
+              "query": [
+                {
+                  "key": "patient",
+                  "value": "Patient/{{patient_cr}}"
+                }
+              ]
+            },
+            "description": "Every case this facility holds for the patient, as a searchset Bundle. Searches only ever see the calling facility's resources."
+          },
+          "response": []
+        },
+        {
+          "name": "Create a case",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));",
+                  "pm.test('planned', () => pm.expect(body.status).to.eql('planned'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"EpisodeOfCare\",\n  \"id\": \"case-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-episode-of-care\"\n    ]\n  },\n  \"identifier\": [\n    {\n      \"system\": \"https://nshr-uat.sha.go.ke/fhir/episode-id\",\n      \"value\": \"case-{{run}}\"\n    }\n  ],\n  \"status\": \"planned\",\n  \"type\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/episode-of-care-type-cs\",\n          \"code\": \"CANCER-CARE-PROGRAM\",\n          \"display\": \"Cancer Care Program\"\n        }\n      ]\n    }\n  ],\n  \"patient\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"managingOrganization\": {\n    \"reference\": \"Organization/{{facility_fid}}\"\n  },\n  \"period\": {\n    \"start\": \"{{today}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/EpisodeOfCare/case-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "EpisodeOfCare",
+                "case-{{run}}"
+              ]
+            },
+            "description": "Opens the EDI case in DRAFT. 201 on create, 200 on update; 202 means EDI committed and the SHR write is queued."
+          },
+          "response": []
+        },
+        {
+          "name": "Get a case",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              }
+            ],
+            "url": {
+              "raw": "{{fhir_base}}/EpisodeOfCare/case-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "EpisodeOfCare",
+                "case-{{run}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "The oncology case is an `EpisodeOfCare` (profile nccp-oncology-episode-of-care). Search before you create: a returning patient keeps one case. Ids are chosen by the client; this collection uses `<kind>-{{run}}`.\n\nStatus maps to EDI: planned = DRAFT, active = ACTIVE, finished = COMPLETED, cancelled = CANCELLED. `CarePlan/$activate` activates the case for you."
+    },
+    {
+      "name": "2 · Encounters & vitals",
+      "item": [
+        {
+          "name": "Create an encounter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Encounter\",\n  \"id\": \"enc-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-encounter\"\n    ]\n  },\n  \"identifier\": [\n    {\n      \"system\": \"https://nshr-uat.sha.go.ke/fhir/encounter-id\",\n      \"value\": \"enc-{{run}}\"\n    }\n  ],\n  \"status\": \"planned\",\n  \"class\": {\n    \"system\": \"http://terminology.hl7.org/CodeSystem/v3-ActCode\",\n    \"code\": \"AMB\",\n    \"display\": \"ambulatory\"\n  },\n  \"type\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/oncology-encounter-type-cs\",\n          \"code\": \"DIAGNOSTIC-ENCOUNTER\",\n          \"display\": \"Diagnostic Encounter\"\n        }\n      ]\n    }\n  ],\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"episodeOfCare\": [\n    {\n      \"reference\": \"EpisodeOfCare/case-{{run}}\"\n    }\n  ],\n  \"period\": {\n    \"start\": \"{{now}}\"\n  },\n  \"serviceProvider\": {\n    \"reference\": \"Organization/{{facility_fid}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Encounter/enc-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Encounter",
+                "enc-{{run}}"
+              ]
+            },
+            "description": "A diagnostic encounter, status planned (EDI SCHEDULED)."
+          },
+          "response": []
+        },
+        {
+          "name": "Record height",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Observation\",\n  \"id\": \"height-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"http://hl7.org/fhir/StructureDefinition/bodyheight\"\n    ]\n  },\n  \"status\": \"final\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://terminology.hl7.org/CodeSystem/observation-category\",\n          \"code\": \"vital-signs\",\n          \"display\": \"Vital Signs\"\n        }\n      ]\n    }\n  ],\n  \"code\": {\n    \"coding\": [\n      {\n        \"system\": \"http://loinc.org\",\n        \"code\": \"8302-2\",\n        \"display\": \"Body height\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"encounter\": {\n    \"reference\": \"Encounter/enc-{{run}}\"\n  },\n  \"effectiveDateTime\": \"{{now}}\",\n  \"valueQuantity\": {\n    \"value\": 170,\n    \"unit\": \"cm\",\n    \"system\": \"http://unitsofmeasure.org\",\n    \"code\": \"cm\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Observation/height-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Observation",
+                "height-{{run}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Record weight",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Observation\",\n  \"id\": \"weight-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"http://hl7.org/fhir/StructureDefinition/bodyweight\"\n    ]\n  },\n  \"status\": \"final\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://terminology.hl7.org/CodeSystem/observation-category\",\n          \"code\": \"vital-signs\",\n          \"display\": \"Vital Signs\"\n        }\n      ]\n    }\n  ],\n  \"code\": {\n    \"coding\": [\n      {\n        \"system\": \"http://loinc.org\",\n        \"code\": \"29463-7\",\n        \"display\": \"Body weight\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"encounter\": {\n    \"reference\": \"Encounter/enc-{{run}}\"\n  },\n  \"effectiveDateTime\": \"{{now}}\",\n  \"valueQuantity\": {\n    \"value\": 68,\n    \"unit\": \"kg\",\n    \"system\": \"http://unitsofmeasure.org\",\n    \"code\": \"kg\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Observation/weight-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Observation",
+                "weight-{{run}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Read the derived BSA",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('BSA 1.79', () => pm.expect(body.valueQuantity.value).to.eql(1.79));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              }
+            ],
+            "url": {
+              "raw": "{{fhir_base}}/Observation/bsa-enc-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Observation",
+                "bsa-enc-{{run}}"
+              ]
+            },
+            "description": "Server-recorded BSA (nccp-body-surface-area-observation) from the height and weight above."
+          },
+          "response": []
+        },
+        {
+          "name": "Record performance status (ECOG)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Observation\",\n  \"id\": \"ecog-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-performance-status-observation\"\n    ]\n  },\n  \"status\": \"final\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://terminology.hl7.org/CodeSystem/observation-category\",\n          \"code\": \"survey\",\n          \"display\": \"Survey\"\n        }\n      ]\n    }\n  ],\n  \"code\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/sha-interventions-cs\",\n        \"code\": \"SHA-ONCOLOGY-CONSULT\",\n        \"display\": \"SHA: Oncology Consultation\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"encounter\": {\n    \"reference\": \"Encounter/enc-{{run}}\"\n  },\n  \"effectiveDateTime\": \"{{now}}\",\n  \"performer\": [\n    {\n      \"reference\": \"Practitioner/{{practitioner_puid}}\"\n    }\n  ],\n  \"valueCodeableConcept\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/performance-status-ecog-cs\",\n        \"code\": \"ECOG-1\",\n        \"display\": \"ECOG 1\"\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Observation/ecog-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Observation",
+                "ecog-{{run}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List encounters for a case",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              }
+            ],
+            "url": {
+              "raw": "{{fhir_base}}/Encounter?episode-of-care=EpisodeOfCare/case-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Encounter"
+              ],
+              "query": [
+                {
+                  "key": "episode-of-care",
+                  "value": "EpisodeOfCare/case-{{run}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Start the encounter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Encounter\",\n  \"id\": \"enc-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-encounter\"\n    ]\n  },\n  \"identifier\": [\n    {\n      \"system\": \"https://nshr-uat.sha.go.ke/fhir/encounter-id\",\n      \"value\": \"enc-{{run}}\"\n    }\n  ],\n  \"status\": \"in-progress\",\n  \"class\": {\n    \"system\": \"http://terminology.hl7.org/CodeSystem/v3-ActCode\",\n    \"code\": \"AMB\",\n    \"display\": \"ambulatory\"\n  },\n  \"type\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/oncology-encounter-type-cs\",\n          \"code\": \"DIAGNOSTIC-ENCOUNTER\",\n          \"display\": \"Diagnostic Encounter\"\n        }\n      ]\n    }\n  ],\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"episodeOfCare\": [\n    {\n      \"reference\": \"EpisodeOfCare/case-{{run}}\"\n    }\n  ],\n  \"period\": {\n    \"start\": \"{{now}}\"\n  },\n  \"serviceProvider\": {\n    \"reference\": \"Organization/{{facility_fid}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Encounter/enc-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Encounter",
+                "enc-{{run}}"
+              ]
+            },
+            "description": "Status walks planned → arrived → in-progress → finished; the server steps EDI through each."
+          },
+          "response": []
+        }
+      ],
+      "description": "Encounter type carries the purpose (oncology-encounter-type-cs). Height and weight use the core vital-sign profiles; once both are in, the server derives BSA (Mosteller, 2 dp) and records it as `Observation/bsa-<encounter>`."
+    },
+    {
+      "name": "3 · Care team (CareTeam)",
+      "item": [
+        {
+          "name": "Add the care team",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"CareTeam\",\n  \"id\": \"team-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-care-team\"\n    ]\n  },\n  \"status\": \"active\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/care-team-category-cs\",\n          \"code\": \"EPISODE-CARE-TEAM\",\n          \"display\": \"Episode Care Team\"\n        }\n      ]\n    }\n  ],\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"encounter\": {\n    \"reference\": \"Encounter/enc-{{run}}\"\n  },\n  \"period\": {\n    \"start\": \"{{today}}\"\n  },\n  \"managingOrganization\": [\n    {\n      \"reference\": \"Organization/{{facility_fid}}\"\n    }\n  ],\n  \"participant\": [\n    {\n      \"role\": [\n        {\n          \"coding\": [\n            {\n              \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/practitioner-roles-cs\",\n              \"code\": \"MEDICAL-ONCOLOGIST\",\n              \"display\": \"Medical Oncologist\"\n            }\n          ]\n        }\n      ],\n      \"member\": {\n        \"reference\": \"Practitioner/{{practitioner_puid}}\"\n      }\n    },\n    {\n      \"role\": [\n        {\n          \"coding\": [\n            {\n              \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/practitioner-roles-cs\",\n              \"code\": \"SURGICAL-ONCOLOGIST\",\n              \"display\": \"Surgical Oncologist\"\n            }\n          ]\n        }\n      ],\n      \"member\": {\n        \"reference\": \"Practitioner/{{second_puid}}\"\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/CareTeam/team-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "CareTeam",
+                "team-{{run}}"
+              ]
+            },
+            "description": "Adds the medical and surgical oncologists. Roles come from practitioner-roles-cs."
+          },
+          "response": []
+        },
+        {
+          "name": "Remove a member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"CareTeam\",\n  \"id\": \"team-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-care-team\"\n    ]\n  },\n  \"status\": \"active\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/care-team-category-cs\",\n          \"code\": \"EPISODE-CARE-TEAM\",\n          \"display\": \"Episode Care Team\"\n        }\n      ]\n    }\n  ],\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"encounter\": {\n    \"reference\": \"Encounter/enc-{{run}}\"\n  },\n  \"period\": {\n    \"start\": \"{{today}}\"\n  },\n  \"managingOrganization\": [\n    {\n      \"reference\": \"Organization/{{facility_fid}}\"\n    }\n  ],\n  \"participant\": [\n    {\n      \"role\": [\n        {\n          \"coding\": [\n            {\n              \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/practitioner-roles-cs\",\n              \"code\": \"MEDICAL-ONCOLOGIST\",\n              \"display\": \"Medical Oncologist\"\n            }\n          ]\n        }\n      ],\n      \"member\": {\n        \"reference\": \"Practitioner/{{practitioner_puid}}\"\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/CareTeam/team-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "CareTeam",
+                "team-{{run}}"
+              ]
+            },
+            "description": "The same team without the surgical oncologist: EDI removes the member."
+          },
+          "response": []
+        }
+      ],
+      "description": "One `CareTeam` per case. Each participant is a `Practitioner/{PUID}` from the health worker registry; the server resolves the licence number EDI needs. PUT the whole team: members you leave out are removed."
+    },
+    {
+      "name": "4 · Diagnosis (Condition, staging, morphology)",
+      "item": [
+        {
+          "name": "Add a suspected diagnosis",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Condition\",\n  \"id\": \"dx-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-diagnosis-condition\"\n    ]\n  },\n  \"extension\": [\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-diagnosis-status-extension\",\n      \"valueCode\": \"SUSPECTED\"\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-suspicion-level-extension\",\n      \"valueCode\": \"SUSPICION-HIGH\"\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-reason-for-suspicion-extension\",\n      \"valueCode\": \"SYMPTOMS\"\n    }\n  ],\n  \"clinicalStatus\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/condition-clinical\",\n        \"code\": \"active\",\n        \"display\": \"Active\"\n      }\n    ]\n  },\n  \"verificationStatus\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/condition-ver-status\",\n        \"code\": \"provisional\",\n        \"display\": \"Provisional\"\n      }\n    ]\n  },\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/condition-category-cs\",\n          \"code\": \"ENCOUNTER-DIAGNOSIS\",\n          \"display\": \"Encounter Diagnosis\"\n        }\n      ]\n    }\n  ],\n  \"code\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/condition-codes-cs\",\n        \"code\": \"C50\",\n        \"display\": \"C50 — Malignant neoplasm of breast\"\n      }\n    ]\n  },\n  \"bodySite\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-primary-site-cs\",\n          \"code\": \"BREAST\",\n          \"display\": \"Breast\"\n        }\n      ]\n    }\n  ],\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"encounter\": {\n    \"reference\": \"Encounter/enc-{{run}}\"\n  },\n  \"onsetDateTime\": \"{{today}}\",\n  \"recordedDate\": \"{{today}}\",\n  \"note\": [\n    {\n      \"text\": \"Hard painless left breast lump for 2 months with skin tethering. Plan: core biopsy with histopathology.\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Condition/dx-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Condition",
+                "dx-{{run}}"
+              ]
+            },
+            "description": "Screening path: a working diagnosis with suspicion level and reason. On a treatment path, PUT the confirmed Condition directly."
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm the diagnosis",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Condition\",\n  \"id\": \"dx-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-diagnosis-condition\"\n    ]\n  },\n  \"extension\": [\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-diagnosis-status-extension\",\n      \"valueCode\": \"CONFIRMED-HISTOLOGICAL\"\n    }\n  ],\n  \"clinicalStatus\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/condition-clinical\",\n        \"code\": \"active\",\n        \"display\": \"Active\"\n      }\n    ]\n  },\n  \"verificationStatus\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/condition-ver-status\",\n        \"code\": \"confirmed\",\n        \"display\": \"Confirmed\"\n      }\n    ]\n  },\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/condition-category-cs\",\n          \"code\": \"ENCOUNTER-DIAGNOSIS\",\n          \"display\": \"Encounter Diagnosis\"\n        }\n      ]\n    }\n  ],\n  \"code\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/condition-codes-cs\",\n        \"code\": \"C50\",\n        \"display\": \"C50 — Malignant neoplasm of breast\"\n      }\n    ]\n  },\n  \"bodySite\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-primary-site-cs\",\n          \"code\": \"BREAST\",\n          \"display\": \"Breast\"\n        }\n      ]\n    }\n  ],\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"encounter\": {\n    \"reference\": \"Encounter/enc-{{run}}\"\n  },\n  \"onsetDateTime\": \"{{today}}\",\n  \"recordedDate\": \"{{today}}\",\n  \"stage\": [\n    {\n      \"summary\": {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-stage-summary-cs\",\n            \"code\": \"STAGE-2\",\n            \"display\": \"Stage 2\"\n          }\n        ]\n      },\n      \"type\": {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-stage-type-cs\",\n            \"code\": \"CLINICAL-STAGE-TYPE\",\n            \"display\": \"Clinical Stage Type\"\n          }\n        ]\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Condition/dx-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Condition",
+                "dx-{{run}}"
+              ]
+            },
+            "description": "The same Condition, CONFIRMED-HISTOLOGICAL with stage, once the biopsy proves it. EDI keeps one current diagnosis per case, so confirm it rather than adding another."
+          },
+          "response": []
+        },
+        {
+          "name": "Record TNM staging",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Observation\",\n  \"id\": \"tnm-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-tnm-staging-observation\"\n    ]\n  },\n  \"status\": \"final\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://terminology.hl7.org/CodeSystem/observation-category\",\n          \"code\": \"laboratory\",\n          \"display\": \"Laboratory\"\n        }\n      ]\n    }\n  ],\n  \"code\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/sha-interventions-cs\",\n        \"code\": \"SHA-ONCOLOGY-CONSULT\",\n        \"display\": \"SHA: Oncology Consultation\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"focus\": [\n    {\n      \"reference\": \"Condition/dx-{{run}}\"\n    }\n  ],\n  \"effectiveDateTime\": \"{{today}}\",\n  \"performer\": [\n    {\n      \"reference\": \"Practitioner/{{practitioner_puid}}\"\n    }\n  ],\n  \"method\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-stage-type-cs\",\n        \"code\": \"CLINICAL-STAGE-TYPE\",\n        \"display\": \"Clinical Stage Type\"\n      }\n    ]\n  },\n  \"component\": [\n    {\n      \"code\": {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-stage-type-cs\",\n            \"code\": \"CLINICAL-T\",\n            \"display\": \"Clinical T Stage\"\n          }\n        ]\n      },\n      \"valueCodeableConcept\": {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/clinical-t-cs\",\n            \"code\": \"T2\",\n            \"display\": \"T2\"\n          }\n        ]\n      }\n    },\n    {\n      \"code\": {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-stage-type-cs\",\n            \"code\": \"CLINICAL-N\",\n            \"display\": \"Clinical N Stage\"\n          }\n        ]\n      },\n      \"valueCodeableConcept\": {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/clinical-n-cs\",\n            \"code\": \"N1\",\n            \"display\": \"N1\"\n          }\n        ]\n      }\n    },\n    {\n      \"code\": {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-stage-type-cs\",\n            \"code\": \"CLINICAL-M\",\n            \"display\": \"Clinical M Stage\"\n          }\n        ]\n      },\n      \"valueCodeableConcept\": {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/clinical-m-cs\",\n            \"code\": \"M0\",\n            \"display\": \"M0\"\n          }\n        ]\n      }\n    },\n    {\n      \"code\": {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-stage-type-cs\",\n            \"code\": \"OVERALL-STAGE\",\n            \"display\": \"Overall Stage\"\n          }\n        ]\n      },\n      \"valueCodeableConcept\": {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-stage-summary-cs\",\n            \"code\": \"STAGE-2\",\n            \"display\": \"Stage 2\"\n          }\n        ]\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Observation/tnm-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Observation",
+                "tnm-{{run}}"
+              ]
+            },
+            "description": "nccp-tnm-staging-observation, focused on the diagnosis."
+          },
+          "response": []
+        },
+        {
+          "name": "Record morphology",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Observation\",\n  \"id\": \"morph-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-morphology-observation\"\n    ]\n  },\n  \"status\": \"final\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://terminology.hl7.org/CodeSystem/observation-category\",\n          \"code\": \"laboratory\",\n          \"display\": \"Laboratory\"\n        }\n      ]\n    }\n  ],\n  \"code\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/sha-interventions-cs\",\n        \"code\": \"SHA-PATHOLOGY\",\n        \"display\": \"SHA: Pathology / Histopathology\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"focus\": [\n    {\n      \"reference\": \"Condition/dx-{{run}}\"\n    }\n  ],\n  \"effectiveDateTime\": \"{{today}}\",\n  \"performer\": [\n    {\n      \"reference\": \"Practitioner/{{practitioner_puid}}\"\n    }\n  ],\n  \"valueCodeableConcept\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/morphology-codes-cs\",\n        \"code\": \"INVASIVE-DUCTAL-CARCINOMA\",\n        \"display\": \"Invasive Ductal Carcinoma\"\n      }\n    ]\n  },\n  \"bodySite\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-primary-site-cs\",\n        \"code\": \"BREAST\",\n        \"display\": \"Breast\"\n      }\n    ]\n  },\n  \"method\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/morphology-method-cs\",\n        \"code\": \"BIOPSY\",\n        \"display\": \"Biopsy\"\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Observation/morph-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Observation",
+                "morph-{{run}}"
+              ]
+            },
+            "description": "nccp-morphology-observation (histology type, method, site)."
+          },
+          "response": []
+        }
+      ],
+      "description": "A `Condition` (nccp-oncology-diagnosis-condition). `diagnosisStatus` is SUSPECTED or CONFIRMED-HISTOLOGICAL / -CYTOLOGICAL / -CLINICAL / -MOLECULAR. Treatment is planned only against a confirmed diagnosis."
+    },
+    {
+      "name": "5 · Diagnostic tests",
+      "item": [
+        {
+          "name": "Order a diagnostic test",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"ServiceRequest\",\n  \"id\": \"sr-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-diagnostic-service-request\"\n    ]\n  },\n  \"identifier\": [\n    {\n      \"system\": \"https://nshr-uat.sha.go.ke/fhir/service-request-id\",\n      \"value\": \"sr-{{run}}\"\n    }\n  ],\n  \"status\": \"active\",\n  \"intent\": \"order\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/sha-interventions-cs\",\n          \"code\": \"SHA-06-002\",\n          \"display\": \"Histology Medium Specimen\"\n        }\n      ]\n    }\n  ],\n  \"priority\": \"routine\",\n  \"code\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/sha-interventions-cs\",\n        \"code\": \"SHA-06-002\",\n        \"display\": \"Histology Medium Specimen\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"encounter\": {\n    \"reference\": \"Encounter/enc-{{run}}\"\n  },\n  \"authoredOn\": \"{{today}}\",\n  \"requester\": {\n    \"reference\": \"Practitioner/{{practitioner_puid}}\"\n  },\n  \"reasonCode\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/condition-codes-cs\",\n          \"code\": \"C50\",\n          \"display\": \"C50 — Malignant neoplasm of breast\"\n        }\n      ]\n    }\n  ],\n  \"reasonReference\": [\n    {\n      \"reference\": \"Condition/dx-{{run}}\"\n    }\n  ],\n  \"bodySite\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/cancer-primary-site-cs\",\n          \"code\": \"BREAST\",\n          \"display\": \"Breast\"\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/ServiceRequest/sr-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "ServiceRequest",
+                "sr-{{run}}"
+              ]
+            },
+            "description": "Histology, medium specimen (SHA-06-002)."
+          },
+          "response": []
+        },
+        {
+          "name": "Attach the result",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"DiagnosticReport\",\n  \"id\": \"dr-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-diagnostic-report\"\n    ]\n  },\n  \"basedOn\": [\n    {\n      \"reference\": \"ServiceRequest/sr-{{run}}\"\n    }\n  ],\n  \"status\": \"final\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://terminology.hl7.org/CodeSystem/v2-0074\",\n          \"code\": \"SP\",\n          \"display\": \"Surgical Pathology\"\n        }\n      ]\n    }\n  ],\n  \"code\": {\n    \"coding\": [\n      {\n        \"system\": \"http://loinc.org\",\n        \"code\": \"60568-3\",\n        \"display\": \"Pathology Synoptic report\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"encounter\": {\n    \"reference\": \"Encounter/enc-{{run}}\"\n  },\n  \"issued\": \"{{now}}\",\n  \"performer\": [\n    {\n      \"reference\": \"Practitioner/{{practitioner_puid}}\"\n    }\n  ],\n  \"conclusion\": \"Invasive ductal carcinoma\",\n  \"presentedForm\": [\n    {\n      \"contentType\": \"application/pdf\",\n      \"title\": \"Histopathology report\",\n      \"data\": \"JVBERi0xLjQK\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/DiagnosticReport/dr-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "DiagnosticReport",
+                "dr-{{run}}"
+              ]
+            },
+            "description": "The report PDF goes in presentedForm (base64)."
+          },
+          "response": []
+        }
+      ],
+      "description": "Order with a `ServiceRequest` (nccp-oncology-diagnostic-service-request) coded from the SHA-06 matrix; attach the result as a `DiagnosticReport`. Preauthorising the test is in folder 8."
+    },
+    {
+      "name": "6 · Regimen & cycles (CarePlan, MedicationRequest, RequestGroup)",
+      "item": [
+        {
+          "name": "Apply a treatment course",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const mr = entries.find(r => r.resourceType === 'MedicationRequest');",
+                  "if (mr) { put('mr1_json', JSON.stringify(mr)); }",
+                  "pm.test('draft regimen', () => pm.expect(entries[0].status).to.eql('draft'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"carePlanId\",\n      \"valueId\": \"cp-{{run}}\"\n    },\n    {\n      \"name\": \"treatmentCourse\",\n      \"valueString\": \"{{treatment_course_id}}\"\n    },\n    {\n      \"name\": \"treatmentIntent\",\n      \"valueCode\": \"CURATIVE\"\n    },\n    {\n      \"name\": \"regimenCode\",\n      \"valueCode\": \"PACLITAXEL-CARBO\"\n    },\n    {\n      \"name\": \"startDate\",\n      \"valueDate\": \"{{start_date}}\"\n    },\n    {\n      \"name\": \"plannedCycles\",\n      \"valueInteger\": 4\n    },\n    {\n      \"name\": \"episodeOfCare\",\n      \"valueReference\": {\n        \"reference\": \"EpisodeOfCare/case-{{run}}\"\n      }\n    },\n    {\n      \"name\": \"encounter\",\n      \"valueReference\": {\n        \"reference\": \"Encounter/enc-{{run}}\"\n      }\n    },\n    {\n      \"name\": \"condition\",\n      \"valueReference\": {\n        \"reference\": \"Condition/dx-{{run}}\"\n      }\n    },\n    {\n      \"name\": \"careTeam\",\n      \"valueReference\": {\n        \"reference\": \"CareTeam/team-{{run}}\"\n      }\n    },\n    {\n      \"name\": \"author\",\n      \"valueReference\": {\n        \"reference\": \"Practitioner/{{practitioner_puid}}\"\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/CarePlan/$apply",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "CarePlan",
+                "$apply"
+              ]
+            },
+            "description": "`treatmentCourse` is the LIVIA treatment_plan_id (`/api/v1/clinical/terminology/treatment-courses?name=` lists them); 38 is Breast Cancer - Carboplatin + Paclitaxel. `regimenCode` comes from treatment-course-codes-cs. Returns a Bundle: the draft CarePlan and its MedicationRequests."
+          },
+          "response": []
+        },
+        {
+          "name": "Change a dose",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mr = JSON.parse(pm.variables.get('mr1_json'));",
+                  "delete mr.meta;",
+                  "mr.dosageInstruction[0].doseAndRate[0].doseQuantity.value = 600;",
+                  "pm.variables.set('mr1_edit', JSON.stringify(mr));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{mr1_edit}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/MedicationRequest/cp-{{run}}-mr-1",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "MedicationRequest",
+                "cp-{{run}}-mr-1"
+              ]
+            },
+            "description": "The first drug line from $apply with a new dose. The pre-request script edits the stored line."
+          },
+          "response": []
+        },
+        {
+          "name": "Add a supportive medicine",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"MedicationRequest\",\n  \"id\": \"mr-supp-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-chemotherapy-medication-request\"\n    ]\n  },\n  \"extension\": [\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-cycle-day-start-extension\",\n      \"valueInteger\": 1\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-cycle-day-end-extension\",\n      \"valueInteger\": 1\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-clinical-category-extension\",\n      \"valueCode\": \"ANTI-EMETIC\"\n    }\n  ],\n  \"identifier\": [\n    {\n      \"system\": \"https://nshr-uat.sha.go.ke/fhir/medication-request-id\",\n      \"value\": \"mr-supp-{{run}}\"\n    }\n  ],\n  \"status\": \"active\",\n  \"intent\": \"order\",\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://terminology.hl7.org/CodeSystem/medicationrequest-category\",\n          \"code\": \"outpatient\",\n          \"display\": \"Outpatient\"\n        }\n      ]\n    }\n  ],\n  \"medicationCodeableConcept\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/generic-products-cs\",\n        \"code\": \"GE12798\",\n        \"display\": \"Ondansetron 4 mg per 5ml Oral Solution\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"encounter\": {\n    \"reference\": \"Encounter/enc-{{run}}\"\n  },\n  \"authoredOn\": \"{{today}}\",\n  \"requester\": {\n    \"reference\": \"Practitioner/{{practitioner_puid}}\"\n  },\n  \"reasonReference\": [\n    {\n      \"reference\": \"Condition/dx-{{run}}\"\n    }\n  ],\n  \"basedOn\": [\n    {\n      \"reference\": \"CarePlan/cp-{{run}}\"\n    }\n  ],\n  \"dosageInstruction\": [\n    {\n      \"text\": \"8 mg orally 30 minutes before chemotherapy\",\n      \"route\": {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/route-of-administration-cs\",\n            \"code\": \"RT10025\",\n            \"display\": \"Oral\"\n          }\n        ]\n      },\n      \"doseAndRate\": [\n        {\n          \"doseQuantity\": {\n            \"value\": 8,\n            \"unit\": \"mg\",\n            \"system\": \"http://unitsofmeasure.org\",\n            \"code\": \"mg\"\n          }\n        }\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/MedicationRequest/mr-supp-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "MedicationRequest",
+                "mr-supp-{{run}}"
+              ]
+            },
+            "description": "A new drug line on the regimen: an anti-emetic for every cycle (clinicalCategory ANTI-EMETIC). Use appliesFrom/ToCycle extensions for one cycle only."
+          },
+          "response": []
+        },
+        {
+          "name": "Activate the regimen",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const rg = entries.find(r => r.resourceType === 'RequestGroup' && (r.extension || []).some(e => e.valueInteger === 1));",
+                  "if (rg) { put('cycle1_id', rg.id); put('cycle1_json', JSON.stringify(rg)); }",
+                  "const cp = entries.find(r => r.resourceType === 'CarePlan');",
+                  "if (cp) { put('careplan_json', JSON.stringify(cp)); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"startDate\",\n      \"valueDate\": \"{{start_date}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/CarePlan/cp-{{run}}/$activate",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "CarePlan",
+                "cp-{{run}}",
+                "$activate"
+              ]
+            },
+            "description": "EDI generates the cycles; the case goes ACTIVE. Returns the active CarePlan and one RequestGroup per cycle; saves cycle 1 as `cycle1_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "List cycles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }",
+                  "    if (pm.environment.name) { pm.environment.set(key, String(value)); }",
+                  "    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              }
+            ],
+            "url": {
+              "raw": "{{fhir_base}}/RequestGroup?patient=Patient/{{patient_cr}}&_sort=-_lastUpdated",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "RequestGroup"
+              ],
+              "query": [
+                {
+                  "key": "patient",
+                  "value": "Patient/{{patient_cr}}"
+                },
+                {
+                  "key": "_sort",
+                  "value": "-_lastUpdated"
+                }
+              ]
+            },
+            "description": "The patient's cycles, newest first. Each RequestGroup's basedOn names its CarePlan and its cycle-number extension the cycle."
+          },
+          "response": []
+        },
+        {
+          "name": "Start cycle 1",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rg = JSON.parse(pm.variables.get('cycle1_json'));",
+                  "delete rg.meta; rg.status = 'active';",
+                  "pm.variables.set('cycle1_edit', JSON.stringify(rg));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{cycle1_edit}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/RequestGroup/{{cycle1_id}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "RequestGroup",
+                "{{cycle1_id}}"
+              ]
+            },
+            "description": "Cycle status: draft, active, on-hold, completed, revoked. The server walks EDI through SCHEDULED → READY → IN_PROGRESS."
+          },
+          "response": []
+        },
+        {
+          "name": "Pause the regimen",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cp = JSON.parse(pm.variables.get('careplan_json'));",
+                  "delete cp.meta; cp.status = 'on-hold'; cp.note = [{ text: 'Neutropenia; hold until count recovers' }];",
+                  "pm.variables.set('careplan_edit', JSON.stringify(cp));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{careplan_edit}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/CarePlan/cp-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "CarePlan",
+                "cp-{{run}}"
+              ]
+            },
+            "description": "CarePlan status `on-hold`; the note is the reason EDI records."
+          },
+          "response": []
+        },
+        {
+          "name": "Resume the regimen",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cp = JSON.parse(pm.variables.get('careplan_json'));",
+                  "delete cp.meta; cp.status = 'active'; cp.note = [{ text: 'Count recovered' }];",
+                  "pm.variables.set('careplan_edit', JSON.stringify(cp));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{careplan_edit}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/CarePlan/cp-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "CarePlan",
+                "cp-{{run}}"
+              ]
+            },
+            "description": "CarePlan status `active`; the note is the reason EDI records."
+          },
+          "response": []
+        }
+      ],
+      "description": "`CarePlan/$apply` builds a draft regimen from a LIVIA treatment course (cycles, BSA-scaled doses). Adjust the drug lines, then `$activate`: EDI generates the cycles (one `RequestGroup` each) and the case goes ACTIVE. Server-built resources accept status changes by PUT."
+    },
+    {
+      "name": "7 · Treatment encounter & administration",
+      "item": [
+        {
+          "name": "Open a treatment encounter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Encounter\",\n  \"id\": \"tx-enc-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-encounter\"\n    ]\n  },\n  \"identifier\": [\n    {\n      \"system\": \"https://nshr-uat.sha.go.ke/fhir/encounter-id\",\n      \"value\": \"tx-enc-{{run}}\"\n    }\n  ],\n  \"status\": \"planned\",\n  \"class\": {\n    \"system\": \"http://terminology.hl7.org/CodeSystem/v3-ActCode\",\n    \"code\": \"AMB\",\n    \"display\": \"ambulatory\"\n  },\n  \"type\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/oncology-encounter-type-cs\",\n          \"code\": \"TREATMENT-ENCOUNTER\",\n          \"display\": \"Treatment Encounter\"\n        }\n      ]\n    }\n  ],\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"episodeOfCare\": [\n    {\n      \"reference\": \"EpisodeOfCare/case-{{run}}\"\n    }\n  ],\n  \"period\": {\n    \"start\": \"{{now}}\"\n  },\n  \"serviceProvider\": {\n    \"reference\": \"Organization/{{facility_fid}}\"\n  },\n  \"extension\": [\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-cycle-number-extension\",\n      \"valueInteger\": 1\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-regimen-reference-extension\",\n      \"valueReference\": {\n        \"reference\": \"CarePlan/cp-{{run}}\"\n      }\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-session-number-extension\",\n      \"valueInteger\": 1\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-treatment-eligibility-extension\",\n      \"valueBoolean\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Encounter/tx-enc-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Encounter",
+                "tx-enc-{{run}}"
+              ]
+            },
+            "description": "Cycle 1, session 1, eligible for treatment."
+          },
+          "response": []
+        },
+        {
+          "name": "Record a dose given",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"MedicationAdministration\",\n  \"id\": \"ma-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-medication-administration\"\n    ]\n  },\n  \"extension\": [\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-cycle-number-extension\",\n      \"valueInteger\": 1\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-session-id-extension\",\n      \"valueString\": \"S1\"\n    }\n  ],\n  \"status\": \"completed\",\n  \"category\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/medication-admin-category\",\n        \"code\": \"outpatient\",\n        \"display\": \"Outpatient\"\n      }\n    ]\n  },\n  \"medicationCodeableConcept\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/generic-products-cs\",\n        \"code\": \"GE11162\",\n        \"display\": \"Carboplatin 10 mg per 1ml Intravenous Solution\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"context\": {\n    \"reference\": \"Encounter/tx-enc-{{run}}\"\n  },\n  \"effectiveDateTime\": \"{{now}}\",\n  \"request\": {\n    \"reference\": \"MedicationRequest/cp-{{run}}-mr-1\"\n  },\n  \"note\": [\n    {\n      \"text\": \"Tolerated well\"\n    }\n  ],\n  \"dosage\": {\n    \"route\": {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/med-admin-route-cs\",\n          \"code\": \"IV-INFUSION-SHORT\",\n          \"display\": \"IV Short Infusion\"\n        }\n      ]\n    },\n    \"dose\": {\n      \"value\": 600,\n      \"unit\": \"mg\",\n      \"system\": \"http://unitsofmeasure.org\",\n      \"code\": \"mg\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/MedicationAdministration/ma-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "MedicationAdministration",
+                "ma-{{run}}"
+              ]
+            },
+            "description": "status completed = ADMINISTERED. The drug code is the generic actually given."
+          },
+          "response": []
+        },
+        {
+          "name": "Update the dose record",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"MedicationAdministration\",\n  \"id\": \"ma-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-medication-administration\"\n    ]\n  },\n  \"extension\": [\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-cycle-number-extension\",\n      \"valueInteger\": 1\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-session-id-extension\",\n      \"valueString\": \"S1\"\n    }\n  ],\n  \"status\": \"on-hold\",\n  \"category\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/medication-admin-category\",\n        \"code\": \"outpatient\",\n        \"display\": \"Outpatient\"\n      }\n    ]\n  },\n  \"medicationCodeableConcept\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/generic-products-cs\",\n        \"code\": \"GE11162\",\n        \"display\": \"Carboplatin 10 mg per 1ml Intravenous Solution\"\n      }\n    ]\n  },\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"context\": {\n    \"reference\": \"Encounter/tx-enc-{{run}}\"\n  },\n  \"effectiveDateTime\": \"{{now}}\",\n  \"request\": {\n    \"reference\": \"MedicationRequest/cp-{{run}}-mr-1\"\n  },\n  \"note\": [\n    {\n      \"text\": \"Held: infusion reaction, restart after review\"\n    }\n  ],\n  \"dosage\": {\n    \"route\": {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/med-admin-route-cs\",\n          \"code\": \"IV-INFUSION-SHORT\",\n          \"display\": \"IV Short Infusion\"\n        }\n      ]\n    },\n    \"dose\": {\n      \"value\": 600,\n      \"unit\": \"mg\",\n      \"system\": \"http://unitsofmeasure.org\",\n      \"code\": \"mg\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/MedicationAdministration/ma-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "MedicationAdministration",
+                "ma-{{run}}"
+              ]
+            },
+            "description": "in-progress = PREPARED, on-hold = HELD, completed = ADMINISTERED, not-done = SKIPPED."
+          },
+          "response": []
+        },
+        {
+          "name": "Close the treatment encounter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Encounter\",\n  \"id\": \"tx-enc-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-encounter\"\n    ]\n  },\n  \"identifier\": [\n    {\n      \"system\": \"https://nshr-uat.sha.go.ke/fhir/encounter-id\",\n      \"value\": \"tx-enc-{{run}}\"\n    }\n  ],\n  \"status\": \"finished\",\n  \"class\": {\n    \"system\": \"http://terminology.hl7.org/CodeSystem/v3-ActCode\",\n    \"code\": \"AMB\",\n    \"display\": \"ambulatory\"\n  },\n  \"type\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/oncology-encounter-type-cs\",\n          \"code\": \"TREATMENT-ENCOUNTER\",\n          \"display\": \"Treatment Encounter\"\n        }\n      ]\n    }\n  ],\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"episodeOfCare\": [\n    {\n      \"reference\": \"EpisodeOfCare/case-{{run}}\"\n    }\n  ],\n  \"period\": {\n    \"start\": \"{{now}}\"\n  },\n  \"serviceProvider\": {\n    \"reference\": \"Organization/{{facility_fid}}\"\n  },\n  \"extension\": [\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-cycle-number-extension\",\n      \"valueInteger\": 1\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-regimen-reference-extension\",\n      \"valueReference\": {\n        \"reference\": \"CarePlan/cp-{{run}}\"\n      }\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-session-number-extension\",\n      \"valueInteger\": 1\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-treatment-eligibility-extension\",\n      \"valueBoolean\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Encounter/tx-enc-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Encounter",
+                "tx-enc-{{run}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "A treatment encounter names its cycle with the `cycleNumber` and `regimenReference` extensions and carries the session number. Doses given are `MedicationAdministration`s (nccp-oncology-medication-administration); each is its own EDI dosage row on the cycle."
+    },
+    {
+      "name": "8 · Consent, preauthorisation & claims",
+      "item": [
+        {
+          "name": "Consent for chemotherapy (send OTP)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));",
+                  "put('consent_id', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Consent\",\n  \"status\": \"proposed\",\n  \"scope\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/consentscope\",\n        \"code\": \"treatment\",\n        \"display\": \"Treatment\"\n      }\n    ]\n  },\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://loinc.org\",\n          \"code\": \"59284-0\",\n          \"display\": \"Patient Consent\"\n        }\n      ]\n    }\n  ],\n  \"patient\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"policyRule\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/v3-ActCode\",\n        \"code\": \"OPTIN\",\n        \"display\": \"opt-in\"\n      }\n    ]\n  },\n  \"provision\": {\n    \"code\": [\n      {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/sha-interventions-cs\",\n            \"code\": \"{{chemo_code}}\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Consent",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Consent"
+              ]
+            },
+            "description": "Status proposed. Saves the new id as `consent_id`."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify the chemotherapy consent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));",
+                  "pm.test('active', () => pm.expect(body.status).to.eql('active'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"otp\",\n      \"valueString\": \"{{otp}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Consent/{{consent_id}}/$verify",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Consent",
+                "{{consent_id}}",
+                "$verify"
+              ]
+            },
+            "description": "Set `otp` first. The Consent becomes active and carries the EDI authorization guid as an identifier."
+          },
+          "response": []
+        },
+        {
+          "name": "Preauthorise cycle 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "const cr = entries.find(r => r.resourceType === 'ClaimResponse');",
+                  "pm.test('queued response', () => pm.expect(cr.outcome).to.eql('queued'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Claim\",\n  \"id\": \"claim-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-claim\"\n    ]\n  },\n  \"extension\": [\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-carcinoma-staging-extension\",\n      \"valueCode\": \"STAGE-2\"\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-treatment-setting-extension\",\n      \"valueCode\": \"DAY-CASE\"\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-session-expected-date-extension\",\n      \"valueDate\": \"{{start_date}}\"\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-sessions-required-extension\",\n      \"valueInteger\": 1\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-cost-per-session-extension\",\n      \"valueMoney\": {\n        \"value\": 0,\n        \"currency\": \"KES\"\n      }\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-regimen-reference-extension\",\n      \"valueReference\": {\n        \"reference\": \"CarePlan/cp-{{run}}\"\n      }\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-cycle-number-extension\",\n      \"valueInteger\": 1\n    }\n  ],\n  \"status\": \"active\",\n  \"type\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/claim-type\",\n        \"code\": \"professional\",\n        \"display\": \"Professional\"\n      }\n    ]\n  },\n  \"subType\": {\n    \"coding\": [\n      {\n        \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/sha-interventions-cs\",\n        \"code\": \"{{chemo_code}}\"\n      }\n    ]\n  },\n  \"use\": \"preauthorization\",\n  \"patient\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"created\": \"{{today}}\",\n  \"provider\": {\n    \"reference\": \"Organization/{{facility_fid}}\"\n  },\n  \"priority\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/processpriority\",\n        \"code\": \"normal\",\n        \"display\": \"Normal\"\n      }\n    ]\n  },\n  \"insurance\": [\n    {\n      \"sequence\": 1,\n      \"focal\": true,\n      \"coverage\": {\n        \"display\": \"Social Health Authority\"\n      }\n    }\n  ],\n  \"careTeam\": [\n    {\n      \"sequence\": 1,\n      \"provider\": {\n        \"reference\": \"Practitioner/{{practitioner_puid}}\"\n      }\n    }\n  ],\n  \"supportingInfo\": [\n    {\n      \"sequence\": 1,\n      \"category\": {\n        \"coding\": [\n          {\n            \"system\": \"http://terminology.hl7.org/CodeSystem/claiminformationcategory\",\n            \"code\": \"info\",\n            \"display\": \"Information\"\n          }\n        ]\n      },\n      \"valueReference\": {\n        \"reference\": \"Consent/{{consent_id}}\"\n      }\n    }\n  ],\n  \"diagnosis\": [\n    {\n      \"sequence\": 1,\n      \"diagnosisReference\": {\n        \"reference\": \"Condition/dx-{{run}}\"\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Claim/$submit",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Claim",
+                "$submit"
+              ]
+            },
+            "description": "NCCP Claim for one cycle. The server prices the planned drugs from LIVIA (sessionsRequired and costPerSession are recomputed), raises the EDI preauth with items, diagnoses and the primary doctor, and records the queued ClaimResponse."
+          },
+          "response": []
+        },
+        {
+          "name": "Read the cycle preauth decision",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              }
+            ],
+            "url": {
+              "raw": "{{fhir_base}}/ClaimResponse/cr-claim-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "ClaimResponse",
+                "cr-claim-{{run}}"
+              ]
+            },
+            "description": "outcome queued → complete (approved, with payment.amount) / error (declined); status cancelled if the preauth is cancelled or expires."
+          },
+          "response": []
+        },
+        {
+          "name": "Consent for the test (send OTP)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));",
+                  "put('test_consent_id', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Consent\",\n  \"status\": \"proposed\",\n  \"scope\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/consentscope\",\n        \"code\": \"treatment\",\n        \"display\": \"Treatment\"\n      }\n    ]\n  },\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://loinc.org\",\n          \"code\": \"59284-0\",\n          \"display\": \"Patient Consent\"\n        }\n      ]\n    }\n  ],\n  \"patient\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"policyRule\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/v3-ActCode\",\n        \"code\": \"OPTIN\",\n        \"display\": \"opt-in\"\n      }\n    ]\n  },\n  \"provision\": {\n    \"code\": [\n      {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/sha-interventions-cs\",\n            \"code\": \"{{test_code}}\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Consent",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Consent"
+              ]
+            },
+            "description": "A separate consent for the diagnostic test intervention."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify the test consent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"otp\",\n      \"valueString\": \"{{otp}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Consent/{{test_consent_id}}/$verify",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Consent",
+                "{{test_consent_id}}",
+                "$verify"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Preauthorise the diagnostic test",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Claim\",\n  \"id\": \"claim-t-{{run}}\",\n  \"status\": \"active\",\n  \"type\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/claim-type\",\n        \"code\": \"professional\",\n        \"display\": \"Professional\"\n      }\n    ]\n  },\n  \"use\": \"preauthorization\",\n  \"patient\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"billablePeriod\": {\n    \"end\": \"{{service_end}}\"\n  },\n  \"created\": \"{{today}}\",\n  \"provider\": {\n    \"reference\": \"Organization/{{facility_fid}}\"\n  },\n  \"priority\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/processpriority\",\n        \"code\": \"normal\",\n        \"display\": \"Normal\"\n      }\n    ]\n  },\n  \"insurance\": [\n    {\n      \"sequence\": 1,\n      \"focal\": true,\n      \"coverage\": {\n        \"display\": \"Social Health Authority\"\n      }\n    }\n  ],\n  \"supportingInfo\": [\n    {\n      \"sequence\": 1,\n      \"category\": {\n        \"coding\": [\n          {\n            \"system\": \"http://terminology.hl7.org/CodeSystem/claiminformationcategory\",\n            \"code\": \"info\",\n            \"display\": \"Information\"\n          }\n        ]\n      },\n      \"valueReference\": {\n        \"reference\": \"Consent/{{test_consent_id}}\"\n      }\n    },\n    {\n      \"sequence\": 2,\n      \"category\": {\n        \"coding\": [\n          {\n            \"system\": \"http://terminology.hl7.org/CodeSystem/claiminformationcategory\",\n            \"code\": \"info\",\n            \"display\": \"Information\"\n          }\n        ]\n      },\n      \"valueReference\": {\n        \"reference\": \"ServiceRequest/sr-{{run}}\"\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Claim/$submit",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Claim",
+                "$submit"
+              ]
+            },
+            "description": "Test-only preauth: no regimen; supportingInfo names the consent and the ServiceRequest. EDI builds the preauth from the test's items. `billablePeriod.end` is the service end date. Refused if the test already has an active preauth."
+          },
+          "response": []
+        },
+        {
+          "name": "Session consent (send OTP)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));",
+                  "put('session_consent_id', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Consent\",\n  \"status\": \"proposed\",\n  \"scope\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/consentscope\",\n        \"code\": \"treatment\",\n        \"display\": \"Treatment\"\n      }\n    ]\n  },\n  \"category\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"http://loinc.org\",\n          \"code\": \"59284-0\",\n          \"display\": \"Patient Consent\"\n        }\n      ]\n    }\n  ],\n  \"patient\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"policyRule\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/v3-ActCode\",\n        \"code\": \"OPTIN\",\n        \"display\": \"opt-in\"\n      }\n    ]\n  },\n  \"provision\": {\n    \"code\": [\n      {\n        \"coding\": [\n          {\n            \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/sha-interventions-cs\",\n            \"code\": \"{{chemo_code}}\"\n          }\n        ]\n      }\n    ],\n    \"data\": [\n      {\n        \"meaning\": \"related\",\n        \"reference\": {\n          \"reference\": \"Claim/claim-{{run}}\"\n        }\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Consent",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Consent"
+              ]
+            },
+            "description": "Each treatment session needs its own OTP consent. `provision.data` names the preauth Claim; the server makes the session's authorization a child of the preauth's. The preauth must be approved (FINALISED) first."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify the session consent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Parameters\",\n  \"parameter\": [\n    {\n      \"name\": \"otp\",\n      \"valueString\": \"{{otp}}\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Consent/{{session_consent_id}}/$verify",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Consent",
+                "{{session_consent_id}}",
+                "$verify"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Bill treatment session 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Claim\",\n  \"id\": \"claim-s-{{run}}\",\n  \"extension\": [\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-cycle-number-extension\",\n      \"valueInteger\": 1\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-session-number-extension\",\n      \"valueInteger\": 1\n    },\n    {\n      \"url\": \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-regimen-reference-extension\",\n      \"valueReference\": {\n        \"reference\": \"CarePlan/cp-{{run}}\"\n      }\n    }\n  ],\n  \"status\": \"active\",\n  \"type\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/claim-type\",\n        \"code\": \"professional\",\n        \"display\": \"Professional\"\n      }\n    ]\n  },\n  \"use\": \"claim\",\n  \"patient\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"created\": \"{{today}}\",\n  \"provider\": {\n    \"reference\": \"Organization/{{facility_fid}}\"\n  },\n  \"priority\": {\n    \"coding\": [\n      {\n        \"system\": \"http://terminology.hl7.org/CodeSystem/processpriority\",\n        \"code\": \"normal\",\n        \"display\": \"Normal\"\n      }\n    ]\n  },\n  \"insurance\": [\n    {\n      \"sequence\": 1,\n      \"focal\": true,\n      \"coverage\": {\n        \"display\": \"Social Health Authority\"\n      }\n    }\n  ],\n  \"related\": [\n    {\n      \"claim\": {\n        \"reference\": \"Claim/claim-{{run}}\"\n      }\n    }\n  ],\n  \"careTeam\": [\n    {\n      \"sequence\": 1,\n      \"provider\": {\n        \"reference\": \"Practitioner/{{practitioner_puid}}\"\n      }\n    }\n  ],\n  \"supportingInfo\": [\n    {\n      \"sequence\": 1,\n      \"category\": {\n        \"coding\": [\n          {\n            \"system\": \"http://terminology.hl7.org/CodeSystem/claiminformationcategory\",\n            \"code\": \"info\",\n            \"display\": \"Information\"\n          }\n        ]\n      },\n      \"valueReference\": {\n        \"reference\": \"Consent/{{session_consent_id}}\"\n      }\n    }\n  ],\n  \"diagnosis\": [\n    {\n      \"sequence\": 1,\n      \"diagnosisReference\": {\n        \"reference\": \"Condition/dx-{{run}}\"\n      }\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Claim/$submit",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Claim",
+                "$submit"
+              ]
+            },
+            "description": "`use: claim` naming the preauth in `related`. The server pins the session to the authorization, opens the claim with the preauth's items and diagnoses, and counts the session against the preauth. Refused when the preauth isn't approved, the session is already billed, or no sessions are left."
+          },
+          "response": []
+        },
+        {
+          "name": "Read the session claim decision",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              }
+            ],
+            "url": {
+              "raw": "{{fhir_base}}/ClaimResponse/cr-claim-s-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "ClaimResponse",
+                "cr-claim-s-{{run}}"
+              ]
+            },
+            "description": "Driven by EDI claim status: approved / processed / paid → complete; rejected → error; closed or time-barred → cancelled; clarification → queued with a disposition. EDI's claim event carries no amount."
+          },
+          "response": []
+        },
+        {
+          "name": "Search the case's claims",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              }
+            ],
+            "url": {
+              "raw": "{{fhir_base}}/Claim?patient=Patient/{{patient_cr}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Claim"
+              ],
+              "query": [
+                {
+                  "key": "patient",
+                  "value": "Patient/{{patient_cr}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Search claim responses",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              }
+            ],
+            "url": {
+              "raw": "{{fhir_base}}/ClaimResponse?patient=Patient/{{patient_cr}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "ClaimResponse"
+              ],
+              "query": [
+                {
+                  "key": "patient",
+                  "value": "Patient/{{patient_cr}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "The financial leg. Each `Consent` authorises ONE SHA intervention (EDI refuses more): POST it, then `$verify` with the OTP sent to the member's phone (valid 10 minutes, single use). Preauths and claims go through `Claim/$submit`; the server tells them apart:\n- NCCP Claim with a regimen and cycle → cycle preauth\n- Claim with no regimen and a ServiceRequest in supportingInfo → test-only preauth\n- `use: claim` naming the preauth in `related` → treatment session claim\n\nEach answers with a Bundle of the Claim and its `ClaimResponse` (`cr-<claim id>`), queued until the payer decides; payer decisions update it asynchronously."
+    },
+    {
+      "name": "9 · Closing",
+      "item": [
+        {
+          "name": "Finish the diagnostic encounter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"Encounter\",\n  \"id\": \"enc-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-encounter\"\n    ]\n  },\n  \"identifier\": [\n    {\n      \"system\": \"https://nshr-uat.sha.go.ke/fhir/encounter-id\",\n      \"value\": \"enc-{{run}}\"\n    }\n  ],\n  \"status\": \"finished\",\n  \"class\": {\n    \"system\": \"http://terminology.hl7.org/CodeSystem/v3-ActCode\",\n    \"code\": \"AMB\",\n    \"display\": \"ambulatory\"\n  },\n  \"type\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/oncology-encounter-type-cs\",\n          \"code\": \"DIAGNOSTIC-ENCOUNTER\",\n          \"display\": \"Diagnostic Encounter\"\n        }\n      ]\n    }\n  ],\n  \"subject\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"episodeOfCare\": [\n    {\n      \"reference\": \"EpisodeOfCare/case-{{run}}\"\n    }\n  ],\n  \"period\": {\n    \"start\": \"{{now}}\"\n  },\n  \"serviceProvider\": {\n    \"reference\": \"Organization/{{facility_fid}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/Encounter/enc-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "Encounter",
+                "enc-{{run}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Complete the case",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const put = function (key, value) {",
+                  "    if (value === undefined || value === null) { return; }\n    if (pm.environment.name) { pm.environment.set(key, String(value)); }\n    else { pm.collectionVariables.set(key, String(value)); }",
+                  "};",
+                  "const body = (function () { try { return pm.response.json(); } catch (e) { return null; } })();",
+                  "const entries = (body && body.entry || []).map(e => e.resource);",
+                  "pm.test('status 200/201/202', () => pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/fhir+json"
+              },
+              {
+                "key": "X-Facility-Id",
+                "value": "{{facility_id}}"
+              },
+              {
+                "key": "X-Facility-Id-Type",
+                "value": "{{facility_id_type}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/fhir+json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resourceType\": \"EpisodeOfCare\",\n  \"id\": \"case-{{run}}\",\n  \"meta\": {\n    \"profile\": [\n      \"https://fhir.dha.go.ke/nccp/StructureDefinition/nccp-oncology-episode-of-care\"\n    ]\n  },\n  \"identifier\": [\n    {\n      \"system\": \"https://nshr-uat.sha.go.ke/fhir/episode-id\",\n      \"value\": \"case-{{run}}\"\n    }\n  ],\n  \"status\": \"finished\",\n  \"type\": [\n    {\n      \"coding\": [\n        {\n          \"system\": \"https://fhir.dha.go.ke/terminology/CodeSystem/episode-of-care-type-cs\",\n          \"code\": \"CANCER-CARE-PROGRAM\",\n          \"display\": \"Cancer Care Program\"\n        }\n      ]\n    }\n  ],\n  \"patient\": {\n    \"reference\": \"Patient/{{patient_cr}}\"\n  },\n  \"managingOrganization\": {\n    \"reference\": \"Organization/{{facility_fid}}\"\n  },\n  \"period\": {\n    \"start\": \"{{today}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fhir_base}}/EpisodeOfCare/case-{{run}}",
+              "host": [
+                "{{fhir_base}}"
+              ],
+              "path": [
+                "EpisodeOfCare",
+                "case-{{run}}"
+              ]
+            },
+            "description": "EpisodeOfCare finished = EDI case COMPLETED."
+          },
+          "response": []
+        }
+      ],
+      "description": "Finish the encounter and the case."
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Writes to the active environment when one is selected, collection scope otherwise:",
+          "// an environment variable of the same name shadows a collection one.",
+          "const put = function (key, value) {",
+          "    if (pm.environment.name) { pm.environment.set(key, value); }",
+          "    else { pm.collectionVariables.set(key, value); }",
+          "};",
+          "",
+          "// One run of the journey: every client-chosen id ends in {{run}}. Clear `run` to start a new patient journey.",
+          "if (!pm.variables.get('run')) { put('run', String(Date.now()).slice(-8)); }",
+          "const pad = n => String(n).padStart(2, '0');",
+          "const d = new Date();",
+          "const day = x => `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;",
+          "if (!pm.variables.get('today')) { put('today', day(d)); }",
+          "if (!pm.variables.get('start_date')) { put('start_date', day(new Date(d.getTime() + 2 * 864e5))); }",
+          "if (!pm.variables.get('service_end')) { put('service_end', day(new Date(d.getTime() + 21 * 864e5))); }",
+          "put('now', d.toISOString().replace(/\\.\\d+Z$/, 'Z'));",
+          "if (!pm.variables.get('facility_fid')) { put('facility_fid', pm.variables.get('facility_id')); }",
+          "",
+          "// Mints a client-credentials token and caches it until 30s before expiry.",
+          "const expiry = Number(pm.variables.get('token_expiry') || 0);",
+          "if (!pm.variables.get('access_token') || Date.now() >= expiry) {",
+          "    pm.sendRequest({",
+          "        url: pm.variables.replaceIn('{{token_url}}'),",
+          "        method: 'POST',",
+          "        header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+          "        body: { mode: 'urlencoded', urlencoded: [",
+          "            { key: 'grant_type',    value: 'client_credentials' },",
+          "            { key: 'client_id',     value: pm.variables.replaceIn('{{client_id}}') },",
+          "            { key: 'client_secret', value: pm.variables.replaceIn('{{client_secret}}') }",
+          "        ]}",
+          "    }, function (err, res) {",
+          "        if (err || res.code !== 200) { console.error('token mint failed', err || res.text()); return; }",
+          "        const body = res.json();",
+          "        put('access_token', body.access_token);",
+          "        put('token_expiry', String(Date.now() + (body.expires_in - 30) * 1000));",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api-dev.dha.com/middleware"
+    },
+    {
+      "key": "fhir_base",
+      "value": "{{base_url}}/api/v1/oncology/fhir"
+    },
+    {
+      "key": "token_url",
+      "value": "https://api-dev.dha.com/middleware/token"
+    },
+    {
+      "key": "client_id",
+      "value": ""
+    },
+    {
+      "key": "client_secret",
+      "value": ""
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "token_expiry",
+      "value": ""
+    },
+    {
+      "key": "facility_id",
+      "value": ""
+    },
+    {
+      "key": "facility_id_type",
+      "value": "fr-code"
+    },
+    {
+      "key": "facility_fid",
+      "value": ""
+    },
+    {
+      "key": "patient_cr",
+      "value": ""
+    },
+    {
+      "key": "practitioner_puid",
+      "value": ""
+    },
+    {
+      "key": "second_puid",
+      "value": ""
+    },
+    {
+      "key": "run",
+      "value": ""
+    },
+    {
+      "key": "today",
+      "value": ""
+    },
+    {
+      "key": "now",
+      "value": ""
+    },
+    {
+      "key": "start_date",
+      "value": ""
+    },
+    {
+      "key": "service_end",
+      "value": ""
+    },
+    {
+      "key": "treatment_course_id",
+      "value": "38"
+    },
+    {
+      "key": "chemo_code",
+      "value": "SHA-06-022"
+    },
+    {
+      "key": "test_code",
+      "value": "SHA-06-002"
+    },
+    {
+      "key": "otp",
+      "value": ""
+    },
+    {
+      "key": "consent_id",
+      "value": ""
+    },
+    {
+      "key": "test_consent_id",
+      "value": ""
+    },
+    {
+      "key": "session_consent_id",
+      "value": ""
+    },
+    {
+      "key": "cycle1_id",
+      "value": ""
+    },
+    {
+      "key": "mr1_json",
+      "value": ""
+    },
+    {
+      "key": "cycle1_json",
+      "value": ""
+    },
+    {
+      "key": "careplan_json",
+      "value": ""
+    }
+  ]
+}

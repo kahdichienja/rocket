@@ -340,10 +340,11 @@ def submit(token: ConsentToken, submission: Submission) -> WireRequest:
         body["invoice_number"] = submission.invoice_number.value
     if submission.discharge_reason is not None:
         body["discharge_reason"] = submission.discharge_reason.value  # undocumented; required on UAT
-    if submission.auth_guid.strip():
-        # Biometric discharge: DHA's flow is "remove the `otp` field and replace it with `auth_guid`",
-        # so the two never travel together.
-        body["auth_guid"] = submission.auth_guid.strip()
+    if submission.discharge_auth_guid.strip():
+        # Biometric discharge: the guid goes in place of the OTP, never beside it. The field table for
+        # this endpoint names it `discharge_auth_guid` — `auth_guid` belongs to `/claims/visit` and is
+        # read here as no proof at all.
+        body["discharge_auth_guid"] = submission.discharge_auth_guid.strip()
     elif submission.otp is not None:
         body["otp"] = submission.otp.code  # undocumented; the discharge OTP, required on UAT
     if submission.reason_for_unknown_patient:
@@ -523,8 +524,8 @@ def discharge(token: ConsentToken, d: Discharge) -> WireRequest:
     # One proof or the other, never both — `Discharge` refuses to be built any other way, so the
     # `elif` cannot fall through. Written as a narrowing rather than an assertion so the invariant is
     # stated in one place (the command) and simply read here.
-    if d.auth_guid.strip():
-        body["auth_guid"] = d.auth_guid.strip()
+    if d.discharge_auth_guid.strip():
+        body["discharge_auth_guid"] = d.discharge_auth_guid.strip()
     elif d.otp is not None:
         body["otp"] = d.otp.code
     return WireRequest("POST", "/claims/discharge", json=body)

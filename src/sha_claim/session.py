@@ -265,7 +265,7 @@ class ClaimSession:
         *,
         discharge_reason: DischargeReason | None = None,
         otp: Otp | str | None = None,
-        auth_guid: str = "",
+        discharge_auth_guid: str = "",
         reason_for_unknown_patient: str | None = None,
     ) -> VirtualClaim:
         """`POST /claims/submit` — final. Attempted once; on ambiguity raises SubmissionOutcomeUnknownError.
@@ -292,7 +292,7 @@ class ClaimSession:
             invoice_number=InvoiceNumber.of(invoice_number) if invoice_number is not None else None,
             discharge_reason=discharge_reason,
             otp=(otp if isinstance(otp, Otp) else Otp(otp)) if otp is not None else None,
-            auth_guid=auth_guid,
+            discharge_auth_guid=discharge_auth_guid,
             reason_for_unknown_patient=reason_for_unknown_patient,
         )
         self.claim = await self._submit.execute(self.consent_token, submission)
@@ -338,7 +338,7 @@ class ClaimSession:
         reason: DischargeReason,
         invoice_number: InvoiceNumber | str,
         otp: Otp | str | None = None,
-        auth_guid: str = "",
+        discharge_auth_guid: str = "",
         discharged_at: datetime | None = None,
     ) -> VirtualClaim:
         """`POST /claims/discharge` — **the inpatient submit.** Final: nothing can be changed after it.
@@ -357,7 +357,7 @@ class ClaimSession:
 
         `discharged_at` defaults to now (UTC); if given it must be timezone-aware.
 
-        Consent is `otp` or `auth_guid`, never both. SHA restricts some members to biometric discharge at
+        Consent is `otp` or `discharge_auth_guid`, never both. SHA restricts some members to biometric discharge at
         a given facility and refuses their OTP outright; for those, authorize with eKYC as a visit does
         and pass the authorization's guid here instead.
         """
@@ -367,7 +367,7 @@ class ClaimSession:
                 reason,
                 InvoiceNumber.of(invoice_number),
                 (otp if isinstance(otp, Otp) else Otp(otp)) if otp is not None else None,
-                auth_guid,
+                discharge_auth_guid,
             )
         except ValueError as exc:
             raise RequestValidationError([Violation("discharge", str(exc))]) from exc

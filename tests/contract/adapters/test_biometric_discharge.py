@@ -28,13 +28,13 @@ def _discharge(**kwargs: object) -> Discharge:
 
 
 def test_a_biometric_discharge_sends_the_guid_and_no_otp() -> None:
-    body = requests.discharge(TOKEN, _discharge(auth_guid="auth-guid-123")).json
+    body = requests.discharge(TOKEN, _discharge(discharge_auth_guid="auth-guid-123")).json
     assert body == {
         "consent_token": "CR1-ABCDEFGHIJ",
         "discharge_date": "2026-10-28T10:30:00+00:00",
         "discharge_reason": "RECOVERED",
         "invoice_number": "INV-1",
-        "auth_guid": "auth-guid-123",
+        "discharge_auth_guid": "auth-guid-123",
     }
     assert "otp" not in body
 
@@ -43,21 +43,24 @@ def test_an_otp_discharge_is_unchanged() -> None:
     """The existing path must not acquire a stray field — every inpatient claim goes through here."""
     body = requests.discharge(TOKEN, _discharge(otp=Otp("123456"))).json
     assert body["otp"] == "123456"
-    assert "auth_guid" not in body
+    assert "auth_guid" not in body and "discharge_auth_guid" not in body
 
 
 def test_submit_swaps_the_same_way() -> None:
     """`submit` carries the discharge OTP too (undocumented, required on UAT), so it swaps identically."""
     body = requests.submit(
-        TOKEN, Submission(InvoiceNumber("INV-1"), DischargeReason.RECOVERED, auth_guid="auth-guid-123")
+        TOKEN,
+        Submission(InvoiceNumber("INV-1"), DischargeReason.RECOVERED, discharge_auth_guid="auth-guid-123"),
     ).json
-    assert body["auth_guid"] == "auth-guid-123"
+    assert body["discharge_auth_guid"] == "auth-guid-123"
     assert "otp" not in body
 
 
 def test_the_guid_is_trimmed_so_whitespace_is_not_consent() -> None:
     assert (
-        requests.discharge(TOKEN, _discharge(auth_guid="  auth-guid-123  ")).json["auth_guid"]
+        requests.discharge(TOKEN, _discharge(discharge_auth_guid="  auth-guid-123  ")).json[
+            "discharge_auth_guid"
+        ]
         == "auth-guid-123"
     )
 
@@ -66,8 +69,8 @@ def test_the_guid_is_trimmed_so_whitespace_is_not_consent() -> None:
     "kwargs",
     [
         {},  # neither
-        {"auth_guid": "   "},  # blank is not a guid
-        {"otp": Otp("123456"), "auth_guid": "auth-guid-123"},  # both
+        {"discharge_auth_guid": "   "},  # blank is not a guid
+        {"otp": Otp("123456"), "discharge_auth_guid": "auth-guid-123"},  # both
     ],
 )
 def test_a_discharge_must_carry_exactly_one_proof(kwargs: dict[str, object]) -> None:
@@ -76,10 +79,40 @@ def test_a_discharge_must_carry_exactly_one_proof(kwargs: dict[str, object]) -> 
     Letting one win would decide a consent question — *who proved this discharge* — by the order the
     body happens to be assembled in, and that answer ends up in SHA's record of the claim.
     """
-    with pytest.raises(ValueError, match="either otp or auth_guid"):
+    with pytest.raises(ValueError, match="either otp or discharge_auth_guid"):
         _discharge(**kwargs)
 
 
 def test_submit_refuses_both_proofs_too() -> None:
-    with pytest.raises(ValueError, match="either otp or auth_guid"):
+    with pytest.raises(ValueError, match="either otp or discharge_auth_guid"):
         Submission(InvoiceNumber("INV-1"), DischargeReason.RECOVERED, Otp("123456"), "auth-guid-123")
+
+
+def test_opening_a_visit_and_ending_one_use_different_field_names() -> None:
+    """`auth_guid` opens a visit; `discharge_auth_guid` ends one. They are not interchangeable.
+
+    This is the whole mistake, pinned from both sides. DHA's biometrics guide describes the discharge
+    swap as "replace it with `auth_guid`", which is the name the *visit* endpoint takes — and sending
+    that name to submit or discharge is read as no proof at all. Nothing in either request body may
+    carry the other endpoint's key.
+    """
+    from sha_claim import BiometricGuid, InterventionCode, PatientId, ServiceType
+
+    visit = requests.open_visit(
+        PatientId("CR1111111111111-1"),
+        ServiceType.OUTPATIENT,
+        [InterventionCode("SHA-12-001")],
+        BiometricGuid("guid-1"),
+    ).json
+    assert visit["auth_guid"] == "guid-1"
+    assert "discharge_auth_guid" not in visit
+
+    ended = requests.discharge(TOKEN, _discharge(discharge_auth_guid="guid-1")).json
+    assert ended["discharge_auth_guid"] == "guid-1"
+    assert "auth_guid" not in ended
+
+    submitted = requests.submit(
+        TOKEN, Submission(InvoiceNumber("INV-1"), DischargeReason.RECOVERED, discharge_auth_guid="guid-1")
+    ).json
+    assert submitted["discharge_auth_guid"] == "guid-1"
+    assert "auth_guid" not in submitted

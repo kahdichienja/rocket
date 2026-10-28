@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.47] — 2026-10-28
+
+### Fixed
+- **Biometric discharge sent the wrong field name, so it never worked.** `discharge()` and `submit()`
+  now send `discharge_auth_guid`; 0.1.46 sent `auth_guid`.
+
+  DHA's biometrics guide describes the swap as *"remove the `otp` field and replace it with
+  `auth_guid`"*, and 0.1.46 was built on that sentence. The API reference's field tables for
+  `POST /claims/submit` and `POST /claims/discharge` both name the field **`discharge_auth_guid`**,
+  and the server agrees: a biometric discharge carrying `auth_guid` is read as carrying no proof at
+  all and refused with *"Please provide a beneficiary discharge authorization method: OTP or
+  biometrics"* (seen in production, 2026-10-28).
+
+  `auth_guid` is a real field — it is what `POST /claims/visit` takes, alongside `match_id`. Opening a
+  visit and ending one are different calls, and the same kind of value has a different name in each.
+  A test now asserts both keys by name and that neither request may carry the other's.
+
+  Also corrected by this: biometric discharge was thought to be inpatient-only, because the guide
+  documents the swap only for `/claims/discharge`. The reference shows `discharge_auth_guid` on
+  `/claims/submit` too, so capitation and outpatient claims take the same path.
+
+### Changed
+- `Discharge.auth_guid` and `Submission.auth_guid` are renamed `discharge_auth_guid`, as are the
+  `discharge()` and `submit()` keyword arguments. Breaking for 0.1.46 callers only, and deliberate:
+  a local name that differs from DHA's is what produced the bug.
+
 ## [0.1.46] — 2026-10-28
 
 ### Added

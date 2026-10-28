@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.46] — 2026-10-28
+
+### Added
+- **Biometric discharge.** `discharge()` and `submit()` take `auth_guid` as an alternative to `otp`.
+
+  SHA restricts some beneficiaries to biometric discharge at a given facility and refuses their
+  discharge OTP outright — *"This beneficiary (…) is restricted to biometric discharge at (…). If you
+  need to use OTP for discharge submit a whitelist request for this beneficiary."* (seen in production,
+  2026-10-28). There was no way to discharge such a member: `Discharge.otp` was required and the wire
+  always sent it, so a complete claim stopped at its last step with nothing to try.
+
+  DHA's biometrics flow answers it in one line — authorize with eKYC exactly as a visit does, then call
+  discharge *"removing the `otp` field and replacing it with `auth_guid`"*. That replacement is the
+  contract, so the two never travel together: `Discharge` and `Submission` refuse to be built carrying
+  both, and refuse to be built carrying neither. Resolving that at the wire by field order would decide
+  **who consented to the discharge** by the order a dict happens to be assembled in, and that answer is
+  what SHA keeps on the claim.
+
+  `otp` keeps its place and its behaviour; every existing call is unaffected.
+
 ## [0.1.45] — 2026-10-27
 
 ### Added

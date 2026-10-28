@@ -432,16 +432,28 @@ class Discharge:
 
     This is how an INPATIENT claim is submitted — `POST /claims/submit` refuses that service type
     outright. Wants an RFC 3339 datetime (`2026-09-20T18:50:00+03:00`), not a bare date.
+
+    Consent comes one of two ways, and SHA decides which. Normally the beneficiary reads out the
+    discharge OTP. But SHA restricts some members to **biometric discharge** at a given facility, and
+    refuses the OTP for them outright — *"This beneficiary (…) is restricted to biometric discharge at
+    (…)"*. For those, authorize with eKYC exactly as a visit does and send the authorization's guid as
+    `auth_guid` **instead of** `otp`; DHA's biometrics flow describes the swap in those terms.
     """
 
     discharged_at: datetime
     reason: DischargeReason
     invoice_number: InvoiceNumber
-    otp: Otp
+    otp: Otp | None = None
+    #: The eKYC authorization's guid, for a member SHA will only discharge biometrically.
+    auth_guid: str = ""
 
     def __post_init__(self) -> None:
         if self.discharged_at.tzinfo is None:
             raise ValueError("discharged_at must be timezone-aware")
+        # Exactly one proof. Neither is a request DHA will take; both is a request that contradicts
+        # itself, and letting one silently win would decide a consent question by field order.
+        if bool(self.otp) == bool(self.auth_guid.strip()):
+            raise ValueError("discharge needs either otp or auth_guid, not both and not neither")
 
 
 @dataclass(frozen=True, slots=True)
@@ -456,7 +468,13 @@ class Submission:
     invoice_number: InvoiceNumber | None = None
     discharge_reason: DischargeReason | None = None
     otp: Otp | None = None
+    #: eKYC authorization guid, sent in place of `otp` for a member SHA restricts to biometric discharge.
+    auth_guid: str = ""
     reason_for_unknown_patient: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.otp is not None and self.auth_guid.strip():
+            raise ValueError("submit takes either otp or auth_guid, not both")
 
 
 @dataclass(frozen=True, slots=True)

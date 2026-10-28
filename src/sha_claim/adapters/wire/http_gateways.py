@@ -84,7 +84,13 @@ from sha_claim.domain.claim import (
     VirtualClaim,
 )
 from sha_claim.domain.codes import Icd11Code, InterventionCode
-from sha_claim.domain.consent import Authorization, BiometricContext, ConsentProof, Otp
+from sha_claim.domain.consent import (
+    Authorization,
+    BiometricContext,
+    ConsentProof,
+    Otp,
+    OtpWhitelistRequest,
+)
 from sha_claim.domain.eligibility import Eligibility
 from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol, EmtClaim, ProtocolLine
 from sha_claim.domain.enums import CancelReason, IdentificationType, ServiceType
@@ -117,6 +123,19 @@ from sha_claim.domain.shr import (
 from sha_claim.errors import UnexpectedResponseError
 
 M = TypeVar("M", bound=BaseModel)
+
+
+def _as_mapping(response: WireResponse) -> Mapping[str, Any]:
+    """DHA's answer as given, or empty when it sent no body.
+
+    Passed through rather than modelled: SHA's whitelist verdict is reviewed by a person and its shape
+    is not published, so inventing a schema here would mean dropping whatever it actually says.
+    """
+    try:
+        payload: Any = response.json()
+    except ValueError:
+        return {}
+    return payload if isinstance(payload, Mapping) else {}
 
 
 def parse_as(model: type[M], response: WireResponse) -> M:
@@ -259,6 +278,16 @@ class HttpConsentGateway:
 
     async def reject(self, token: str) -> None:
         raise_for_status(await self._transport.send(requests.reject_authorization(token)))
+
+    async def create_otp_whitelist(self, request: OtpWhitelistRequest) -> Mapping[str, Any]:
+        response = await self._transport.send(requests.create_otp_whitelist(request))
+        raise_for_status(response)
+        return _as_mapping(response)
+
+    async def get_otp_whitelist(self, beneficiary: PatientId, facility_fr_code: str) -> Mapping[str, Any]:
+        response = await self._transport.send(requests.get_otp_whitelist(beneficiary, facility_fr_code))
+        raise_for_status(response)
+        return _as_mapping(response)
 
 
 class HttpVirtualClaimGateway:

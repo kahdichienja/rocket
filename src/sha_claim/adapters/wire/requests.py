@@ -18,7 +18,14 @@ from sha_claim.domain.callbacks import (
 )
 from sha_claim.domain.claim import CoverageSelection, Discharge, LineEdit, NewClaimLine, NextOfKin, Submission
 from sha_claim.domain.codes import Icd11Code, InterventionCode
-from sha_claim.domain.consent import BiometricContext, BiometricGuid, ConsentProof, MatchId, Otp
+from sha_claim.domain.consent import (
+    BiometricContext,
+    BiometricGuid,
+    ConsentProof,
+    MatchId,
+    Otp,
+    OtpWhitelistRequest,
+)
 from sha_claim.domain.emergency import EmergencyCase, EmtClaim, ProtocolLine
 from sha_claim.domain.enums import CancelReason, IdentificationType, ServiceType
 from sha_claim.domain.facility import FacilityIdentifierType
@@ -1130,3 +1137,57 @@ def update_callback_operation(operation_id: str, changes: CallbackOperationUpdat
 def delete_callback_operation(operation_id: str) -> WireRequest:
     """Leaves the endpoint standing; only this operation's deliveries stop."""
     return WireRequest("DELETE", f"/tenants/endpoints/operations/{operation_id}")
+
+
+# ── OTP whitelisting ────────────────────────────────────────────────────────────────────────────────
+
+
+def create_otp_whitelist(w: OtpWhitelistRequest) -> WireRequest:
+    """`POST /patients/otp-whitelists` — ask SHA to accept an OTP for a member it will not OTP.
+
+    SHA's own remedy when biometrics cannot match a beneficiary: an officer reviews the request and,
+    if granted, the OTP path opens for that member. Multipart, because the evidence travels with it —
+    and `attachments` is a **JSON string inside a form field**, not a JSON body, naming the form field
+    each file arrives under. That indirection is DHA's, and it is why this cannot be a plain POST.
+    """
+    attachments = [
+        {
+            "document_title": a.filename,
+            "document_type": a.wire_document_type,
+            "file_field_name": f"attachments_file_blob_{i}" if i else "attachments_file_blob",
+        }
+        for i, a in enumerate(w.attachments)
+    ]
+    form = {
+        "reason_type": w.reason_type,
+        "reason": w.reason,
+        "beneficiary_cr_id": w.beneficiary.value,
+        "biometric_attempts": str(w.biometric_attempts),
+        "attachments": json.dumps(attachments),
+    }
+    if w.facility_fr_code:
+        form["facility_fr_code"] = w.facility_fr_code
+    files = {
+        entry["file_field_name"]: (a.filename, a.content, a.content_type)
+        for entry, a in zip(attachments, w.attachments, strict=True)
+    }
+    return WireRequest(
+        "POST",
+        "/patients/otp-whitelists",
+        form=form,
+        files=files or None,
+        multipart=True,
+        timeout=TimeoutKind.UPLOAD,
+    )
+
+
+def get_otp_whitelist(beneficiary: PatientId, facility_fr_code: str) -> WireRequest:
+    """`GET /patients/otp-whitelists/callback` — what SHA has decided about this member's requests.
+
+    The path says `callback`, which it is not: DHA names the read after the callback that delivers the
+    same verdict. Kept verbatim because the server is the authority on its own routes.
+    """
+    params = {"beneficiary_cr_id": beneficiary.value}
+    if facility_fr_code:
+        params["facility_fr_code"] = facility_fr_code
+    return WireRequest("GET", "/patients/otp-whitelists/callback", params=params)

@@ -26,6 +26,7 @@ from sha_claim.adapters.wire.http_gateways import (
     HttpVirtualClaimGateway,
 )
 from sha_claim.adapters.wire.transport import Transport
+from sha_claim.domain.attachments import Attachment
 from sha_claim.domain.benefits import (
     BedOccupancy,
     BenefitPackage,
@@ -44,7 +45,13 @@ from sha_claim.domain.callbacks import (
 )
 from sha_claim.domain.claim import PayerClaimRecord
 from sha_claim.domain.codes import InterventionCode
-from sha_claim.domain.consent import Authorization, BiometricContext, ConsentProof, Otp
+from sha_claim.domain.consent import (
+    Authorization,
+    BiometricContext,
+    ConsentProof,
+    Otp,
+    OtpWhitelistRequest,
+)
 from sha_claim.domain.eligibility import Eligibility
 from sha_claim.domain.emergency import EmergencyCase, EmergencyProtocol
 from sha_claim.domain.enums import BroughtBy, IdentificationType, ModeOfArrival, ServiceType
@@ -301,6 +308,42 @@ class ConsentResource:
     async def reject(self, token: str) -> None:
         """`POST /claims/authorizations/{token}/reject` — close a pending authorization."""
         await self._gateway.reject(token)
+
+    async def request_otp_whitelist(
+        self,
+        patient: PatientId | str,
+        *,
+        reason_type: str,
+        reason: str,
+        biometric_attempts: int,
+        attachments: Sequence[Attachment] = (),
+        facility_fr_code: str = "",
+    ) -> Mapping[str, Any]:
+        """`POST /patients/otp-whitelists` — ask SHA to accept an OTP for a member it will not match.
+
+        SHA's published remedy when biometrics fail, and the only route left for a beneficiary it
+        restricts to biometric discharge whose finger will not match. An officer reviews it: DHA's
+        guide says a request with no attempts behind it, or missing the documents its reason calls
+        for, is refused, so `biometric_attempts` and `attachments` are what decide the outcome.
+        """
+        return await self._gateway.create_otp_whitelist(
+            OtpWhitelistRequest(
+                PatientId.of(patient),
+                reason_type,
+                reason,
+                biometric_attempts,
+                tuple(attachments),
+                facility_fr_code,
+            )
+        )
+
+    async def otp_whitelist(self, patient: PatientId | str, facility_fr_code: str = "") -> Mapping[str, Any]:
+        """`GET /patients/otp-whitelists/callback` — what SHA has decided about this member's requests.
+
+        The path says `callback` and is not one; DHA names the read after the callback that delivers
+        the same verdict.
+        """
+        return await self._gateway.get_otp_whitelist(PatientId.of(patient), facility_fr_code)
 
 
 class ClaimsResource:

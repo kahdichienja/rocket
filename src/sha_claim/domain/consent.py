@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from sha_claim.domain.attachments import Attachment
 from sha_claim.domain.codes import InterventionCode
 from sha_claim.domain.enums import AuthorizationStatus, PaymentMechanism
 from sha_claim.domain.identifiers import Identifier, PatientId
@@ -260,3 +261,32 @@ class Authorization:
 
     def as_biometric_proof(self) -> BiometricGuid:
         return BiometricGuid(self.guid)
+
+
+@dataclass(frozen=True, slots=True)
+class OtpWhitelistRequest:
+    """Ask SHA to accept an OTP for a beneficiary its biometrics will not match.
+
+    SHA publishes this as the remedy when a member cannot be verified at the reader — and it is the
+    *only* route for a member restricted to biometric discharge whose finger will not match. An officer
+    reviews it, so the evidence matters: DHA's guide says a request with no attempts behind it, or
+    without supporting documents where the reason needs them, is refused.
+    """
+
+    beneficiary: PatientId
+    reason_type: str
+    """e.g. BIOMETRIC_FAILURE, OLD, AMPUTEE, MEDICAL_CONDITION, DIALYSIS_TREATMENT, ONCOLOGY_TREATMENT, OTHER."""
+    reason: str
+    """What was tried and what the reader did. An officer reads this."""
+    biometric_attempts: int
+    """How many captures failed. Zero is a request with nothing behind it, which SHA may refuse."""
+    attachments: tuple[Attachment, ...] = ()
+    facility_fr_code: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.reason_type.strip():
+            raise ValueError("reason_type is required")
+        if not self.reason.strip():
+            raise ValueError("reason is required")
+        if self.biometric_attempts < 0:
+            raise ValueError("biometric_attempts cannot be negative")

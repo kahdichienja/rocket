@@ -1,10 +1,11 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 import pytest
 
 from sha_claim.domain.claim import VirtualClaim
 from sha_claim.domain.codes import InterventionCode
-from sha_claim.domain.consent import Authorization, BiometricContext, ConsentProof, Otp
+from sha_claim.domain.consent import Authorization, BiometricContext, ConsentProof, Otp, OtpWhitelistRequest
 from sha_claim.domain.enums import ClaimWorkflowState, ServiceType
 from sha_claim.domain.identifiers import ConsentToken, PatientId
 from sha_claim.errors import RequestValidationError
@@ -41,6 +42,13 @@ class FakeConsent:
 
     async def send_otp(self, patient: PatientId, interventions: Sequence[InterventionCode]) -> str:
         return "sent"
+
+    async def create_otp_whitelist(self, request: OtpWhitelistRequest) -> Mapping[str, Any]:
+        self.calls.append((request,))
+        return {"status": "PENDING"}
+
+    async def get_otp_whitelist(self, beneficiary: PatientId, facility_fr_code: str) -> Mapping[str, Any]:
+        return {"requests": []}
 
     async def list(self, beneficiary: PatientId) -> tuple[Authorization, ...]:
         return ()

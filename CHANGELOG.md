@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.48] — 2026-10-28
+
+### Added
+- **OTP whitelisting.** `consent.request_otp_whitelist()` and `consent.otp_whitelist()` —
+  `POST /patients/otp-whitelists` and `GET /patients/otp-whitelists/callback`.
+
+  SHA's published remedy when biometrics will not match a beneficiary, and the only route left for a
+  member it restricts to biometric discharge whose finger fails. NaCare reached it through a legacy
+  proxy pointed at a base URL carrying no `/api/v1`, so DHA answered `404 page not found`. Probed
+  directly, `…/middleware/patients/otp-whitelists` is a 404 and
+  `…/middleware/api/v1/patients/otp-whitelists` is a 401 — present, and only missing a token. This
+  client prepends `/api/v1`, so the call lands correctly and travels on the SHA credentials rather
+  than a second set.
+
+  The request is multipart, and `attachments` is a **JSON string inside a form field** naming the form
+  field each file arrives under — DHA's own indirection, pinned field by field against its published
+  Postman collection. The verdict is returned as DHA sends it: it is reviewed by a person and its
+  shape is not published, so modelling it would mean dropping whatever it actually says.
+
+  `biometric_attempts` is required and sent as given. DHA refuses requests with no evidence behind
+  them, and inflating the count here would hide that from the desk rather than prevent it.
+
 ## [0.1.47] — 2026-10-28
 
 ### Fixed

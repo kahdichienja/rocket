@@ -45,6 +45,13 @@ class AuthorizationWire(WireModel):
     token: str = ""
     auth_code: str = ""
     status: str = ""
+    #: Why the authorization reached its status. DHA spells it `authorization_reason` on the status
+    #: callback and `authorizationReason` on `GET /claims/authorizations`; `WireModel` generates the
+    #: camel alias and accepts the field name too, so one declaration covers both.
+    authorization_reason: str = ""
+    #: Free text beside the reason, e.g. "biometrics_not_found: member allowed OTP until 2026-09-29".
+    #: **Never branched on** — DHA says its wording may change. Read only to show the date.
+    notes: str = ""
     label: str = ""
     is_open: bool = False
     benefit_type: str = ""

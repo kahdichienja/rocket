@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sha_claim.domain.attachments import Attachment
 from sha_claim.domain.codes import InterventionCode
-from sha_claim.domain.enums import AuthorizationStatus, PaymentMechanism
+from sha_claim.domain.enums import AuthorizationReason, AuthorizationStatus, PaymentMechanism
 from sha_claim.domain.identifiers import Identifier, PatientId
 
 
@@ -176,6 +177,11 @@ class Authorization:
     record_id: int | None = None
     ekyc_token: str = ""
     """Present on the biometric path; the same value as `verification.embeded_token`."""
+    reason: AuthorizationReason | None = None
+    """Why the authorization reached its status — set on a rejection, usually absent otherwise."""
+    notes: str = ""
+    """DHA's free text beside the reason. **Never branched on**: DHA says the wording may change, and its
+    own guidance is to decide on `authorization_reason` instead. Read here only to show a date."""
     verification: VerificationRequest | None = None
     """Where the beneficiary proves who they are. Only the biometric path has one."""
     is_elective: bool = False
@@ -216,6 +222,55 @@ class Authorization:
     @property
     def is_pending(self) -> bool:
         return self.status == AuthorizationStatus.PENDING
+
+    @property
+    def is_rejected(self) -> bool:
+        """Terminal. The capture failed and polling should stop.
+
+        Until 2026-10-29 `REJECTED` was not in `AuthorizationStatus` at all, so it arrived as an unknown
+        pseudo-member and a caller had no way to tell "not finished" from "never will be". That is what
+        left captures waiting for ever while the beneficiary's screen reported success.
+        """
+        return self.status == AuthorizationStatus.REJECTED
+
+    @property
+    def otp_allowed_after_biometrics_not_found(self) -> bool:
+        """eCitizen holds no usable fingerprints for this patient, and DHA is allowing an OTP instead.
+
+        **Both halves are required, and the narrowness is the point.** A rejection carrying no reason is
+        an ordinary biometric failure — a finger that did not match, a capture that lapsed, a minor — and
+        grants nothing. Reading those as an OTP allowance would send a desk down a path SHA will refuse
+        with "restricted to biometric visits".
+
+        DHA's own check is `to_state == "REJECTED" && authorization_reason == "BIOMETRICS_NOT_FOUND_OTP_ALLOWED"`,
+        and this is that, with the status compared as an enum rather than a string.
+
+        The allowance is time-limited (roughly 24-48 hours) and, while it lasts, the eligibility check
+        reports `whitelisted_for_otp` — so the ordinary route logic will offer the OTP by itself once
+        eligibility is re-read. This property is what lets a screen say so *immediately*, without waiting
+        for that round trip.
+        """
+        return self.is_rejected and self.reason == AuthorizationReason.BIOMETRICS_NOT_FOUND_OTP_ALLOWED
+
+    @property
+    def otp_allowed_until(self) -> date | None:
+        """The last day the OTP allowance covers, parsed out of `notes` — **for display only**.
+
+        DHA puts it in free text: "biometrics_not_found: member allowed OTP until 2026-09-29; retry the
+        authorization with OTP." It is the one useful thing in there, and a desk telling a patient to come
+        back tomorrow should be able to say which day.
+
+        Returns None when the text does not carry one, and nothing behaves differently for it: the
+        allowance is DHA's to enforce, and a wording change must cost us a date on a screen, never a
+        decision. That is why no caller is allowed to branch on this.
+        """
+        match = re.search(r"until\s+(\d{4})-(\d{2})-(\d{2})", self.notes or "")
+        if not match:
+            return None
+        try:
+            return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            return None
 
     @property
     def is_verified(self) -> bool:

@@ -101,6 +101,7 @@ from sha_claim.domain.consent import (
 from sha_claim.domain.eligibility import Coverage, DateRange, Eligibility, Scheme
 from sha_claim.domain.emergency import EmergencyProtocol
 from sha_claim.domain.enums import (
+    AuthorizationReason,
     AuthorizationStatus,
     ClaimWorkflowState,
     CoverageStatus,
@@ -206,6 +207,8 @@ def to_authorization(w: AuthorizationWire) -> Authorization:
         token=w.token,
         auth_code=w.auth_code,
         status=AuthorizationStatus.parse(w.status),
+        reason=AuthorizationReason.parse(w.authorization_reason),
+        notes=w.notes,
         label=w.label,
         is_open=w.is_open,
         benefit_type=w.benefit_type,

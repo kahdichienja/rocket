@@ -123,6 +123,29 @@ class AuthorizationStatus(LenientStrEnum):
     AUTHORIZED_PENDING_VISIT = "AUTHORIZED_PENDING_VISIT"  # consent verified, visit not yet opened
     SUBMITTED_CLAIM = "SUBMITTED_CLAIM"
     CLOSED = "CLOSED"
+    #: Terminal. The capture will not succeed and must not be retried for this patient.
+    #:
+    #: Missing from this list until 2026-10-29, which is why a rejected capture hung: `LenientStrEnum`
+    #: made it a pseudo-member, `is_verified` read False as it should, and the caller — having no way to
+    #: tell "not yet" from "never" — went on polling for ever while the beneficiary's own screen said the
+    #: capture had succeeded. See `AuthorizationReason` for the remedy that comes with it.
+    REJECTED = "REJECTED"
+
+
+class AuthorizationReason(LenientStrEnum):
+    """Why an authorization reached its state. Present on a rejection; usually empty otherwise.
+
+    Lenient because DHA publishes one value and plainly has others: an unknown reason must survive as
+    itself rather than crash a check-in, and must **not** read as the one reason that grants a remedy.
+    """
+
+    #: eCitizen holds fingerprints for this patient that it cannot use for matching, so no capture can
+    #: ever succeed. DHA rejects the authorization and allows an OTP for roughly 24-48 hours, *even at a
+    #: facility on enforced biometrics*. Adults only: a minor is rejected without a reason and belongs in
+    #: the minors fingerprint flow.
+    #:
+    #: A rejection carrying no reason is an ordinary biometric failure and grants nothing.
+    BIOMETRICS_NOT_FOUND_OTP_ALLOWED = "BIOMETRICS_NOT_FOUND_OTP_ALLOWED"
 
 
 class ClaimWorkflowState(LenientStrEnum):

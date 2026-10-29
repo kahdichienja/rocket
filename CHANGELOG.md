@@ -2,6 +2,42 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.51] — 2026-10-29
+
+### Fixed
+- **A rejected biometric authorization hung the capture for ever.** `AuthorizationStatus` had no
+  `REJECTED`, so DHA's rejection arrived as a `LenientStrEnum` pseudo-member. `is_verified` was correctly
+  `False` — but a caller had no way to tell *not finished yet* from *never will be*, and so polled
+  indefinitely while the beneficiary's own screen reported the capture had succeeded.
+
+  Observed in production 2026-10-29: biometric captures stuck on "waiting", for some patients and not
+  others, on the same desk and the same day. The per-patient variation is the tell — it depends on what
+  eCitizen holds for that patient, not on the facility, the workstation or the time.
+
+### Added
+- **`BIOMETRICS_NOT_FOUND_OTP_ALLOWED`, and the remedy it carries.** When eCitizen holds fingerprints for
+  a patient that it cannot *use* for matching, no capture can ever succeed. DHA rejects the authorization
+  and allows an OTP for roughly 24-48 hours — **even at a facility on enforced biometrics**.
+
+  `AuthorizationReason` names the one published value and stays lenient for the ones that are not.
+  `Authorization` gains:
+
+  - `is_rejected` — terminal; stop polling. DHA is explicit that biometrics must not be retried for this
+    patient, because a new attempt fails the same way.
+  - `otp_allowed_after_biometrics_not_found` — rejected **and** carrying that exact reason. Both halves,
+    matching DHA's own published check. The narrowness is the point: a rejection with no reason is an
+    ordinary biometric failure, and reading it as an allowance sends a desk to an OTP that SHA refuses
+    with "restricted to biometric visits".
+  - `otp_allowed_until` — the last allowed day, parsed out of `notes`, **for display only**. DHA says that
+    wording may change, so nothing branches on it: a sentence we cannot read costs a date on a screen,
+    never a decision.
+
+  `is_verified` is unchanged. A rejection is not consent, whatever remedy follows it.
+
+  The reason field is spelled `authorization_reason` on the status callback and `authorizationReason` on
+  `GET /claims/authorizations`. One declaration covers both through `WireModel`'s alias rules, and a test
+  pins it — losing that would silently disable the remedy on whichever path changed.
+
 ## [0.1.50] — 2026-10-29
 
 ### Added

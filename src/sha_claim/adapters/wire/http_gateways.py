@@ -18,6 +18,12 @@ from sha_claim.adapters.wire.schemas.benefits import (
     SubBenefitWire,
     UtilizationWire,
 )
+from sha_claim.adapters.wire.schemas.biometrics import (
+    CaptureJobWire,
+    EnrollmentStatusWire,
+    MatchAttemptWire,
+    MatchResultWire,
+)
 from sha_claim.adapters.wire.schemas.callbacks import CallbackEndpointWire, CallbackOperationWire
 from sha_claim.adapters.wire.schemas.claim import (
     ClaimAttachmentWire,
@@ -57,6 +63,15 @@ from sha_claim.domain.benefits import (
     InterventionCoverage,
     SubBenefit,
     UtilizationBalance,
+)
+from sha_claim.domain.biometrics import (
+    ANY_FINGER,
+    CaptureJob,
+    CaptureStation,
+    EnrollmentStatus,
+    MatchAttempt,
+    MatchRequestId,
+    MatchResult,
 )
 from sha_claim.domain.callbacks import (
     CallbackEndpoint,
@@ -909,3 +924,62 @@ class HttpCallbackGateway:
 
     async def delete_operation(self, operation_id: str) -> None:
         raise_for_status(await self._transport.send(requests.delete_callback_operation(operation_id)))
+
+
+class HttpBiometricsGateway:
+    """Minors fingerprint consent: `/biometrics/enrollments`, `/enrollment-status` and `/matches`.
+
+    Every write here dispatches a capture to a physical reader at a named workstation and returns `202`
+    with an id, not an outcome. Nothing in this class waits for a verdict, and nothing in it should ever
+    grow a retry loop around `match_status`: DHA delivers the verdict by callback and says the read "should
+    not be called in a loop". It is a reconciliation read, and the caller decides when reconciling is due.
+    """
+
+    def __init__(self, transport: Transport) -> None:
+        self._transport = transport
+
+    async def enrol(
+        self,
+        beneficiary: PatientId,
+        position: int,
+        station: CaptureStation,
+        deadline_seconds: int | None = None,
+    ) -> CaptureJob:
+        response = await self._transport.send(
+            requests.enrol_minor_fingerprint(beneficiary, position, station, deadline_seconds)
+        )
+        return mappers.to_capture_job(parse_as(CaptureJobWire, response))
+
+    async def verify(
+        self,
+        beneficiary: PatientId,
+        position: int,
+        station: CaptureStation,
+        deadline_seconds: int | None = None,
+    ) -> CaptureJob:
+        response = await self._transport.send(
+            requests.verify_minor_fingerprint(beneficiary, position, station, deadline_seconds)
+        )
+        return mappers.to_capture_job(parse_as(CaptureJobWire, response))
+
+    async def enrollment_status(self, beneficiary: PatientId) -> EnrollmentStatus:
+        response = await self._transport.send(requests.minor_enrollment_status(beneficiary))
+        # The beneficiary is passed through: DHA does not always echo the code, and a status whose subject
+        # is unknown cannot safely be attributed to the child at the desk.
+        return mappers.to_enrollment_status(parse_as(EnrollmentStatusWire, response), beneficiary)
+
+    async def match(
+        self,
+        beneficiary: PatientId,
+        station: CaptureStation,
+        position: int = ANY_FINGER,
+        deadline_seconds: int | None = None,
+    ) -> MatchAttempt:
+        response = await self._transport.send(
+            requests.match_minor_fingerprint(beneficiary, station, position, deadline_seconds)
+        )
+        return mappers.to_match_attempt(parse_as(MatchAttemptWire, response))
+
+    async def match_status(self, match_id: MatchRequestId) -> MatchResult:
+        response = await self._transport.send(requests.minor_match_status(match_id))
+        return mappers.to_match_result(parse_as(MatchResultWire, response))

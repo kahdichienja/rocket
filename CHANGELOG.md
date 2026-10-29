@@ -2,6 +2,47 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.50] — 2026-10-29
+
+### Added
+- **Fingerprint consent for minors.** `sha.biometrics` — `enrollment_status()`, `enrol()`, `verify()`,
+  `match()` and `match_status()`, over `/biometrics/enrollments`, `/biometrics/enrollments/verify`,
+  `/biometrics/enrollment-status`, `/biometrics/matches` and `/biometrics/matches/{match_id}`.
+
+  **This is the only consent route a child has.** eKYC resolves the member, reads the national ID SHA's own
+  Client Registry holds, and forwards it as `subject_id_number`; a minor has no national ID, so there is
+  nothing to forward and an adult capture cannot verify a child at all. The flow is not an alternative, it
+  is the whole of it.
+
+  Three of the five calls dispatch a capture to a physical reader and answer `202` with a job or match id.
+  **No verdict is in the response and none is polled for** — DHA delivers it to the facility's registered
+  callback endpoint. `match_status()` is documented as a reconciliation read for a caller that missed its
+  callback, "not to be called in a loop", and the docstrings say so at every level so nobody wraps it in
+  one. A facility with no registered callback endpoint is refused `422` before anything is dispatched.
+
+  `CaptureStation` sits beside `BiometricContext` rather than replacing it, because **DHA spells the same
+  concept two ways**: eKYC wants `work_station_id`, these endpoints want `workstation_id`. One shared
+  payload builder would mean one of the two flows silently sending a field the server ignores, and then a
+  `400` naming a field the caller believes it sent. `device_id` has no adult equivalent at all — eKYC runs
+  in a browser; this drives a reader attached to a named desk.
+
+  `MatchResult.is_matched` is an equality test against `matched`, and `proof()` raises for anything else.
+  That is **the inverse of the bug fixed in 0.1.49, deliberately**: there, an unrecognised authorization
+  status silently meant *keep waiting* and a discharge hung; here the silent meaning of an unrecognised
+  status must be *this is not consent*. A hung capture is an inconvenience; a capture wrongly read as proof
+  is a child treated and billed on consent nobody gave.
+
+  `EnrollmentStatus` separates `verified` from `non_verified` because DHA does: "the print is stored but
+  not yet usable for consent". A child can be enrolled and still unable to prove anything. `can_consent`,
+  `needs_enrollment` and `needs_verification` are the three questions a screen actually asks, and
+  `needs_verification` is false for a child who has one confirmed finger and one half-done one — that
+  child can consent now, and sending the desk into housekeeping would hold up a visit for nothing.
+
+  Finger positions are validated before the call: 1–10 for enrolment and verification, and `0` ("any
+  enrolled finger") accepted only for a match. DHA answers a bad one with a `400` naming the field; this is
+  the same answer one round trip earlier, in a sentence a desk can read. `deadline_seconds` is omitted
+  unless given, per DHA: "leave it unset unless you have a reason".
+
 ## [0.1.49] — 2026-10-29
 
 ### Fixed

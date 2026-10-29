@@ -12,6 +12,7 @@ from typing import Any, Self
 import httpx
 
 from sha_claim.adapters.wire.http_gateways import (
+    HttpBiometricsGateway,
     HttpCallbackGateway,
     HttpConsentGateway,
     HttpEligibilityGateway,
@@ -33,6 +34,15 @@ from sha_claim.domain.benefits import (
     InterventionCoverage,
     SubBenefit,
     UtilizationBalance,
+)
+from sha_claim.domain.biometrics import (
+    ANY_FINGER,
+    CaptureJob,
+    CaptureStation,
+    EnrollmentStatus,
+    MatchAttempt,
+    MatchRequestId,
+    MatchResult,
 )
 from sha_claim.domain.callbacks import (
     CallbackEndpoint,
@@ -81,6 +91,7 @@ from sha_claim.infrastructure.auth import OAuth2ClientCredentials
 from sha_claim.infrastructure.clock import SystemClock
 from sha_claim.infrastructure.retry import DEFAULT_RETRY, RetryPolicy
 from sha_claim.infrastructure.transport import HttpxTransport
+from sha_claim.ports.biometrics_gateway import BiometricsGateway
 from sha_claim.ports.claim_gateways import ClaimGateways
 from sha_claim.ports.clock import Clock
 from sha_claim.ports.consent_gateway import ConsentGateway
@@ -344,6 +355,102 @@ class ConsentResource:
         the same verdict.
         """
         return await self._gateway.get_otp_whitelist(PatientId.of(patient), facility_fr_code)
+
+
+class BiometricsResource:
+    """Fingerprint consent for a minor — enrol a finger, confirm it, then match it to prove consent.
+
+    **The route a child has, because eKYC is not one.** SHA's eKYC forwards the member's national ID as
+    `subject_id_number`; a minor has none, so an adult capture cannot verify a child at all.
+
+    Three of these five calls dispatch a capture to a physical reader and answer `202` with an id. **The
+    verdict is not in the response and is not polled for** — DHA delivers it to the facility's registered
+    callback endpoint. `match_status` exists for a caller that missed its callback, and DHA says it should
+    not be called in a loop.
+
+    A caller that has no registered callback endpoint is refused `422` before anything is dispatched, so
+    register one first.
+
+    The usual order:
+
+        status = await sha.biometrics.enrollment_status(child_cr)
+        if status.needs_enrollment:      await sha.biometrics.enrol(child_cr, position, station=…)
+        elif status.needs_verification:  await sha.biometrics.verify(child_cr, position, station=…)
+        elif status.can_consent:         await sha.biometrics.match(child_cr, station=…)
+        # …then, once a callback says the match resolved and `match_status` confirms it:
+        await sha.claims.open_visit(child_cr, service_type, codes, result.proof())
+    """
+
+    def __init__(self, gateway: BiometricsGateway) -> None:
+        self._gateway = gateway
+
+    async def enrollment_status(self, beneficiary: PatientId | str) -> EnrollmentStatus:
+        """Which fingers this beneficiary has stored, and which are usable for consent.
+
+        Read-only and synchronous: no device is touched and no workstation contacted. It is the call to
+        make before sending anybody to a reader, and the only one here that answers a question directly.
+        """
+        return await self._gateway.enrollment_status(PatientId.of(beneficiary))
+
+    async def enrol(
+        self,
+        beneficiary: PatientId | str,
+        position: int,
+        *,
+        station: CaptureStation,
+        deadline_seconds: int | None = None,
+    ) -> CaptureJob:
+        """First capture at one finger position. Stored, but **not yet usable for consent**.
+
+        Enrolment is per finger, so repeat this for each position the child needs, then `verify` each one.
+        """
+        return await self._gateway.enrol(PatientId.of(beneficiary), position, station, deadline_seconds)
+
+    async def verify(
+        self,
+        beneficiary: PatientId | str,
+        position: int,
+        *,
+        station: CaptureStation,
+        deadline_seconds: int | None = None,
+    ) -> CaptureJob:
+        """Second capture at an already-enrolled position, matched against the print stored there.
+
+        Success is what makes the finger usable for consent. A finger has a small number of verification
+        attempts within a short window; once spent it is retired and must be enrolled again, so a caller
+        should surface the attempts remaining that the callback reports rather than retrying blindly.
+        """
+        return await self._gateway.verify(PatientId.of(beneficiary), position, station, deadline_seconds)
+
+    async def match(
+        self,
+        beneficiary: PatientId | str,
+        *,
+        station: CaptureStation,
+        position: int = ANY_FINGER,
+        deadline_seconds: int | None = None,
+    ) -> MatchAttempt:
+        """Dispatch a fingerprint match to the workstation. `202` and a `match_id`, not a verdict.
+
+        `beneficiary` is sent as `health_id` and **must be the child's own CR code**, dependant suffix
+        included, and the same value given later as `patient_id`: authorization compares the two and
+        refuses a mismatch. A principal's code and a dependant's differ by one trailing character.
+
+        `position` defaults to any enrolled finger, which is what a point-of-care capture wants. Pass one
+        of `enrollment_status().verified` to insist on a particular finger.
+        """
+        return await self._gateway.match(PatientId.of(beneficiary), station, position, deadline_seconds)
+
+    async def match_status(self, match_id: MatchRequestId | str) -> MatchResult:
+        """Re-read a match attempt, finalizing it if the capture has resolved.
+
+        **A reconciliation read, not the delivery path.** Call it when a callback arrived and said this
+        attempt resolved, or when the capture deadline has passed with nothing — once, not in a loop.
+
+        Only `result.is_matched` authorizes, and `result.proof()` refuses to hand over consent for an
+        attempt in any other state.
+        """
+        return await self._gateway.match_status(MatchRequestId.of(match_id))
 
 
 class ClaimsResource:
@@ -889,6 +996,7 @@ class AsyncSHAClient:
         self.eligibility = EligibilityResource(HttpEligibilityGateway(self._transport))
         self.registries = RegistryResource(HttpRegistryGateway(self._transport))
         self.consent = ConsentResource(HttpConsentGateway(self._transport))
+        self.biometrics = BiometricsResource(HttpBiometricsGateway(self._transport))
         gateways = ClaimGateways(
             claims=HttpVirtualClaimGateway(self._transport),
             preauths=HttpPreauthGateway(self._transport),

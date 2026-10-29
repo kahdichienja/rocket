@@ -10,6 +10,12 @@ from typing import Any
 
 from sha_claim.adapters.wire.transport import TimeoutKind, WireRequest
 from sha_claim.domain.attachments import Attachment
+from sha_claim.domain.biometrics import (
+    ANY_FINGER,
+    CaptureStation,
+    MatchRequestId,
+    finger_position,
+)
 from sha_claim.domain.callbacks import (
     CallbackEndpointUpdate,
     CallbackOperationUpdate,
@@ -1191,3 +1197,86 @@ def get_otp_whitelist(beneficiary: PatientId, facility_fr_code: str) -> WireRequ
     if facility_fr_code:
         params["facility_fr_code"] = facility_fr_code
     return WireRequest("GET", "/patients/otp-whitelists/callback", params=params)
+
+
+# ── minors fingerprint consent ──
+#
+# A minor has no national ID, so eKYC cannot verify one: SHA forwards the member's national ID as
+# `subject_id_number` and there is nothing to forward. These five endpoints are the only consent route a
+# child has. Three of them are asynchronous — `202` and a callback, with no verdict in the response.
+#
+# `workstation_id` here, against eKYC's `work_station_id`. DHA spells the same concept two ways on two
+# endpoints, which is why `CaptureStation` exists beside `BiometricContext` instead of replacing it.
+
+
+def enrol_minor_fingerprint(
+    beneficiary: PatientId, position: int, station: CaptureStation, deadline_seconds: int | None = None
+) -> WireRequest:
+    """`POST /biometrics/enrollments` — first capture at one finger position.
+
+    The print is stored but **not** usable for consent until `verify_minor_fingerprint` confirms it.
+    Enrolment is per finger, so this is sent once per position the child needs.
+    """
+    body: dict[str, object] = {
+        "beneficiary_code": beneficiary.value,
+        "position": finger_position(position),
+        **station.as_payload(),
+    }
+    if deadline_seconds is not None:
+        body["deadline_seconds"] = deadline_seconds
+    return WireRequest("POST", "/biometrics/enrollments", json=body)
+
+
+def verify_minor_fingerprint(
+    beneficiary: PatientId, position: int, station: CaptureStation, deadline_seconds: int | None = None
+) -> WireRequest:
+    """`POST /biometrics/enrollments/verify` — second capture, matched against the print already enrolled.
+
+    `position` must be one already enrolled. A finger has a small number of verification attempts within a
+    short window; once spent it is retired and must be enrolled again.
+    """
+    body: dict[str, object] = {
+        "beneficiary_code": beneficiary.value,
+        "position": finger_position(position),
+        **station.as_payload(),
+    }
+    if deadline_seconds is not None:
+        body["deadline_seconds"] = deadline_seconds
+    return WireRequest("POST", "/biometrics/enrollments/verify", json=body)
+
+
+def minor_enrollment_status(beneficiary: PatientId) -> WireRequest:
+    """`GET /biometrics/enrollment-status` — the only synchronous call here, and it touches no hardware."""
+    return WireRequest("GET", "/biometrics/enrollment-status", params={"beneficiary_code": beneficiary.value})
+
+
+def match_minor_fingerprint(
+    beneficiary: PatientId,
+    station: CaptureStation,
+    position: int = ANY_FINGER,
+    deadline_seconds: int | None = None,
+) -> WireRequest:
+    """`POST /biometrics/matches` — dispatch a match to the workstation. `202` and a `match_id`.
+
+    `health_id` is the child's own CR code, dependant suffix included, and **must equal the `patient_id`
+    sent later** to `/claims/visit` or `/claims/authorize`: authorization compares the two and refuses a
+    mismatch. Dependants differ from their principal by one trailing character, so this is sent as the
+    child's own code and never derived from the principal's.
+    """
+    body: dict[str, object] = {
+        "health_id": beneficiary.value,
+        "position": finger_position(position, allow_any=True),
+        **station.as_payload(),
+    }
+    if deadline_seconds is not None:
+        body["deadline_seconds"] = deadline_seconds
+    return WireRequest("POST", "/biometrics/matches", json=body)
+
+
+def minor_match_status(match_id: MatchRequestId) -> WireRequest:
+    """`GET /biometrics/matches/{match_id}` — the reconciliation read, for a caller that missed its callback.
+
+    DHA: "It should not be called in a loop." Used once, on a callback or on a lapsed deadline, it is what
+    the endpoint is for.
+    """
+    return WireRequest("GET", f"/biometrics/matches/{match_id.value}")

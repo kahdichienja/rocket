@@ -21,6 +21,12 @@ from sha_claim.adapters.wire.schemas.benefits import (
     SubBenefitWire,
     UtilizationWire,
 )
+from sha_claim.adapters.wire.schemas.biometrics import (
+    CaptureJobWire,
+    EnrollmentStatusWire,
+    MatchAttemptWire,
+    MatchResultWire,
+)
 from sha_claim.adapters.wire.schemas.callbacks import CallbackEndpointWire, CallbackOperationWire
 from sha_claim.adapters.wire.schemas.claim import (
     ClaimAttachmentWire,
@@ -57,6 +63,15 @@ from sha_claim.domain.benefits import (
     RequiredClaimDocument,
     SubBenefit,
     UtilizationBalance,
+)
+from sha_claim.domain.biometrics import (
+    CaptureJob,
+    EnrollmentStatus,
+    JobId,
+    MatchAttempt,
+    MatchRequestId,
+    MatchResult,
+    MatchStatus,
 )
 from sha_claim.domain.callbacks import (
     CallbackAuthType,
@@ -943,5 +958,52 @@ def to_callback_operation(w: CallbackOperationWire) -> CallbackOperation:
         request_content_type=w.request_content_type,
         timeout_ms=w.timeout_ms,
         headers=dict(w.headers),
+        extra=w.unmodelled(),
+    )
+
+
+# ── minors fingerprint consent ──
+
+
+def to_capture_job(w: CaptureJobWire) -> CaptureJob:
+    return CaptureJob(
+        job_id=JobId(w.job_id) if w.job_id.strip() else None,
+        next_action=w.next_action,
+        message=w.message,
+        extra=w.unmodelled(),
+    )
+
+
+def to_match_attempt(w: MatchAttemptWire) -> MatchAttempt:
+    return MatchAttempt(
+        match_id=MatchRequestId(w.match_id) if w.match_id.strip() else None,
+        next_action=w.next_action,
+        message=w.message,
+        extra=w.unmodelled(),
+    )
+
+
+def to_match_result(w: MatchResultWire) -> MatchResult:
+    return MatchResult(
+        match_id=MatchRequestId(w.match_id) if w.match_id.strip() else None,
+        status=MatchStatus.parse(w.status),
+        error_code=w.error_code,
+        message=w.message,
+        extra=w.unmodelled(),
+    )
+
+
+def to_enrollment_status(w: EnrollmentStatusWire, beneficiary: PatientId | None = None) -> EnrollmentStatus:
+    """`beneficiary` is passed in because DHA does not always echo the code back, and a status whose subject
+    is unknown is one a caller cannot safely attribute to the child in front of them."""
+    echoed = w.beneficiary_code.strip()
+    return EnrollmentStatus(
+        beneficiary=PatientId(echoed) if echoed else beneficiary,
+        # Sorted so a screen can render "positions 2, 5" without re-sorting, and so two reads of the same
+        # fingers compare equal whatever order DHA listed them in.
+        verified=tuple(sorted(w.verified)),
+        non_verified=tuple(sorted(w.non_verified)),
+        total=w.total,
+        state=w.enrollment_status,
         extra=w.unmodelled(),
     )

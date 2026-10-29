@@ -229,6 +229,50 @@ class HttpEligibilityGateway:
         return mappers.to_bed_occupancy(parse_as(BedOccupancyWire, response))
 
 
+def _matching(records: Sequence[Any], key: str, wanted: str) -> Any | None:
+    """The first record whose `key` is `wanted`, compared case-insensitively. None when nothing is asked."""
+    if not wanted:
+        return None
+    for record in records:
+        if isinstance(record, Mapping) and str(record.get(key) or "").strip().casefold() == wanted:
+            return record
+    return None
+
+
+def _requested_record(records: Sequence[Any], guid: str, token: str) -> Any:
+    """Out of what `GET /claims/authorizations` returned, the authorization that was actually asked for.
+
+    **The endpoint answers with a list, and its filters cannot be trusted.** `list_authorizations` in this
+    same class is documented from UAT: DHA ignores `beneficiary_code` and hands back the whole facility's
+    authorizations, which is why that method filters again on arrival. `tests/contract/test_client.py::
+    test_consent_list_filters_out_other_beneficiaries` pins exactly that, on exactly this endpoint.
+
+    This lookup used to take `records[0]` on the strength of the `token`/`guid` filter it sent. Where that
+    filter is as loose as its neighbour, a beneficiary holding more than one authorization gets a *different*
+    row — and an older `PENDING` one is indistinguishable from a capture the server is still working on. A
+    discharge then waits for ever on a capture that has already succeeded, for some patients and not others,
+    depending only on how many authorization records the member happens to have (suspected in prod,
+    2026-10-29: the eKYC page reported success while the claim panel stayed on PENDING).
+
+    **Falls back to `records[0]`, deliberately.** Returning nothing when no row matches would be asserting
+    that `guid` is always present and always spelled the same way on every record SHA returns — and this
+    function sits under the check-in consent path, which works today. A wrong guess there would break a
+    working flow to fix a suspected one. So the selection can only ever improve: a matching row is used, and
+    where none can be told apart the caller gets precisely what it got before. NaCare reports when that
+    fallback fires (`record_matches` on the discharge capture view), which is how we learn whether the loose
+    filter was ever real.
+
+    Matched on the guid first and the token second, because the guid identifies one authorization while a
+    caller may pass an empty token — `StartVisit.open` sends `journey.consent_token or ""`, and the
+    `by-token` route defaults `guid` to empty, so each is sometimes the only half available.
+    """
+    return (
+        _matching(records, "guid", guid.strip().casefold())
+        or _matching(records, "token", token.strip().casefold())
+        or records[0]
+    )
+
+
 class HttpConsentGateway:
     def __init__(self, transport: Transport) -> None:
         self._transport = transport
@@ -258,8 +302,13 @@ class HttpConsentGateway:
         records = payload if isinstance(payload, list) else [payload] if payload else []
         if not records:
             return None
+        # The row we asked about, not merely the first row — see `_requested_record`. Still exactly one
+        # record is validated, so a malformed authorization belonging to somebody else cannot turn our
+        # own lookup into an `UnexpectedResponseError`.
         try:
-            return mappers.to_authorization(AuthorizationWire.model_validate(records[0]))
+            return mappers.to_authorization(
+                AuthorizationWire.model_validate(_requested_record(records, guid, token))
+            )
         except ValidationError as exc:
             raise UnexpectedResponseError(f"AuthorizationWire: {exc}") from exc
 

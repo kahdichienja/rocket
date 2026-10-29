@@ -89,6 +89,7 @@ from sha_claim.domain.identifiers import (
     ClaimGuid,
     ConsentToken,
     FacilityCode,
+    FileId,
     InvoiceNumber,
     LineGuid,
     PatientId,
@@ -174,7 +175,7 @@ from sha_claim.settings import Environment, SHASettings, Timeouts
 #: message insisting the right version was the wrong one. Deriving it from package metadata instead looked
 #: tempting and is worse: an editable checkout reports whatever it was last installed as (`0.1.0.dev0`
 #: here), so the guard would then reject every development environment.
-__version__ = "0.1.48"
+__version__ = "0.1.49"
 
 __all__ = [
     "STATUS_CHANGED",

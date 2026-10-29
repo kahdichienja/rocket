@@ -2,6 +2,48 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com), versioning: [SemVer](https://semver.org).
 
+## [0.1.49] — 2026-10-29
+
+### Fixed
+- **`consent.get()` answered about the first authorization returned, not the one it asked for.**
+  `GET /claims/authorizations` replies with a *list*, and this lookup read `records[0]` on the strength
+  of the `token`/`guid` filter it had sent.
+
+  That filter cannot be trusted. `consent.list()` in the same class is documented from UAT as receiving
+  the whole facility's authorizations whatever `beneficiary_code` says — which is why it filters again
+  on arrival, and why `test_consent_list_filters_out_other_beneficiaries` pins that behaviour on this
+  very endpoint. Where `guid` is as loose as its neighbour, a beneficiary holding more than one
+  authorization gets a different row back, and an older `PENDING` one cannot be told apart from a
+  capture the server is still working on.
+
+  The visible cost is a biometric discharge that waits for ever on a capture that already succeeded —
+  for some patients and not others, depending only on how many authorization records the member
+  happens to have. Suspected in production 2026-10-29: the eKYC page reported *"Biometrics are
+  successfully captured"* while the claim panel stayed on `PENDING`, on the same desk, the same
+  workstation and the same day as discharges that worked.
+
+  The record is now selected by `guid`, then by `token`, compared case-insensitively — a UUID differing
+  only in case is the same identifier.
+
+  **It falls back to `records[0]` when no row can be told apart, deliberately.** Returning nothing there
+  would assert that `guid` is always present and always spelled the same way on every record SHA
+  returns, and this function also sits under the check-in consent path, which works in production
+  today. A wrong guess would break a working flow to fix a suspected one. So the selection can only
+  improve: a matching row is used, and where none exists the caller gets exactly what it got before.
+
+  Still exactly one record is validated, so a malformed authorization belonging to somebody else cannot
+  turn our own lookup into an `UnexpectedResponseError` — which validating the whole list would have
+  allowed.
+
+- **`FileId` was promised by `__all__` and not importable**, so `from sha_claim import *` raised
+  `AttributeError` on it — while `files.download_link()` took `FileId | str` as its parameter type. The
+  one name a caller needed in order to type that call was the one name they could not import. It is now
+  exported from `sha_claim.domain.identifiers` like its neighbours.
+
+  Found while preparing this release, and pre-existing. `tests/unit/test_public_api.py` now checks
+  `__all__` as a whole — every name importable, a star import that succeeds, no duplicates — because the
+  next one would be added the same way this one was: by hand, in a list of two hundred.
+
 ## [0.1.48] — 2026-10-28
 
 ### Added
